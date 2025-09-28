@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, BookOpen } from "lucide-react";
@@ -6,10 +7,10 @@ import Whiteboard from "@/components/Whiteboard";
 const StudySession = () => {
   const { sessionId } = useParams();
 
-  const handleSceneChange = (elements: any[], appState: any) => {
+  const handleSceneChange = useCallback((elements: any[], appState: any) => {
     // TODO: Implement real-time sync with Supabase
     console.log("Scene updated:", { elements, appState });
-  };
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-surface">

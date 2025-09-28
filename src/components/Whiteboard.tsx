@@ -39,11 +39,12 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
   ]);
 
   const handleSceneUpdate = useCallback((elements: any[], appState: any) => {
-    onSceneChange?.(elements, appState);
-    
     // Update selected elements for AI assistance
     const selected = elements.filter((el: any) => appState.selectedElementIds[el.id]);
     setSelectedElements(selected);
+    
+    // Call parent callback
+    onSceneChange?.(elements, appState);
   }, [onSceneChange]);
 
   const handleAskAI = useCallback(() => {

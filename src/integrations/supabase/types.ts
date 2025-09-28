@@ -14,6 +14,130 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_feed: {
+        Row: {
+          action_type: string
+          actor_id: string | null
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action_type: string
+          actor_id?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action_type?: string
+          actor_id?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: []
+      }
+      ai_threads: {
+        Row: {
+          answer: string | null
+          board_id: string | null
+          created_at: string | null
+          created_by: string | null
+          element_id: string | null
+          id: string
+          image_data: string | null
+          model_used: string | null
+          question: string
+          tokens_input: number | null
+          tokens_output: number | null
+        }
+        Insert: {
+          answer?: string | null
+          board_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          element_id?: string | null
+          id?: string
+          image_data?: string | null
+          model_used?: string | null
+          question: string
+          tokens_input?: number | null
+          tokens_output?: number | null
+        }
+        Update: {
+          answer?: string | null
+          board_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          element_id?: string | null
+          id?: string
+          image_data?: string | null
+          model_used?: string | null
+          question?: string
+          tokens_input?: number | null
+          tokens_output?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_threads_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      boards: {
+        Row: {
+          created_at: string | null
+          document_id: string | null
+          id: string
+          scene_data: Json | null
+          scene_version: number | null
+          session_id: string | null
+          storage_path: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          document_id?: string | null
+          id?: string
+          scene_data?: Json | null
+          scene_version?: number | null
+          session_id?: string | null
+          storage_path?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          document_id?: string | null
+          id?: string
+          scene_data?: Json | null
+          scene_version?: number | null
+          session_id?: string | null
+          storage_path?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boards_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "study_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           created_at: string
@@ -114,6 +238,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      daily_metrics: {
+        Row: {
+          ai_questions_asked: number | null
+          date: string
+          minutes_studied: number | null
+          problems_completed: number | null
+          sessions_joined: number | null
+          streak_day: number | null
+          user_id: string
+        }
+        Insert: {
+          ai_questions_asked?: number | null
+          date: string
+          minutes_studied?: number | null
+          problems_completed?: number | null
+          sessions_joined?: number | null
+          streak_day?: number | null
+          user_id: string
+        }
+        Update: {
+          ai_questions_asked?: number | null
+          date?: string
+          minutes_studied?: number | null
+          problems_completed?: number | null
+          sessions_joined?: number | null
+          streak_day?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      friends: {
+        Row: {
+          created_at: string | null
+          friend_id: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          friend_id: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          friend_id?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       highlights: {
         Row: {
@@ -438,6 +613,35 @@ export type Database = {
           },
         ]
       }
+      session_participants: {
+        Row: {
+          is_moderator: boolean | null
+          joined_at: string | null
+          session_id: string
+          user_id: string
+        }
+        Insert: {
+          is_moderator?: boolean | null
+          joined_at?: string | null
+          session_id: string
+          user_id: string
+        }
+        Update: {
+          is_moderator?: boolean | null
+          joined_at?: string | null
+          session_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_participants_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "study_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_questions: {
         Row: {
           created_at: string
@@ -553,6 +757,45 @@ export type Database = {
         }
         Relationships: []
       }
+      study_sessions: {
+        Row: {
+          ap_course: string | null
+          created_at: string | null
+          description: string | null
+          host_id: string | null
+          id: string
+          is_public: boolean | null
+          max_participants: number | null
+          title: string
+          updated_at: string | null
+          voice_room_url: string | null
+        }
+        Insert: {
+          ap_course?: string | null
+          created_at?: string | null
+          description?: string | null
+          host_id?: string | null
+          id?: string
+          is_public?: boolean | null
+          max_participants?: number | null
+          title: string
+          updated_at?: string | null
+          voice_room_url?: string | null
+        }
+        Update: {
+          ap_course?: string | null
+          created_at?: string | null
+          description?: string | null
+          host_id?: string | null
+          id?: string
+          is_public?: boolean | null
+          max_participants?: number | null
+          title?: string
+          updated_at?: string | null
+          voice_room_url?: string | null
+        }
+        Relationships: []
+      }
       tutoring_threads: {
         Row: {
           created_at: string
@@ -621,6 +864,42 @@ export type Database = {
           id?: string
           mode?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      user_quotas: {
+        Row: {
+          ai_queries_limit: number | null
+          ai_queries_used: number | null
+          created_at: string | null
+          plan_type: string | null
+          reset_date: string | null
+          storage_limit: number | null
+          storage_used: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_queries_limit?: number | null
+          ai_queries_used?: number | null
+          created_at?: string | null
+          plan_type?: string | null
+          reset_date?: string | null
+          storage_limit?: number | null
+          storage_used?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_queries_limit?: number | null
+          ai_queries_used?: number | null
+          created_at?: string | null
+          plan_type?: string | null
+          reset_date?: string | null
+          storage_limit?: number | null
+          storage_used?: number | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

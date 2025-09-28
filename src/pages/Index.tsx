@@ -168,13 +168,16 @@ const Index = () => {
                 description: "Track streaks, earn achievements, and compete with friends to stay motivated.",
                 color: "text-primary"
               }
-            ].map((feature, index) => (
-              <Card key={index} className="p-6 bg-card hover:bg-card-hover transition-all duration-200 hover:shadow-card group cursor-pointer">
-                <feature.icon className={`w-12 h-12 ${feature.color} mb-4 group-hover:scale-110 transition-transform`} />
-                <h3 className="text-xl font-semibold text-foreground mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{feature.description}</p>
-              </Card>
-            ))}
+            ].map((feature, index) => {
+              const IconComponent = feature.icon;
+              return (
+                <Card key={index} className="p-6 bg-card hover:bg-card-hover transition-all duration-200 hover:shadow-card group cursor-pointer">
+                  <IconComponent className={`w-12 h-12 ${feature.color} mb-4 group-hover:scale-110 transition-transform`} />
+                  <h3 className="text-xl font-semibold text-foreground mb-2">{feature.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{feature.description}</p>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>

@@ -64,9 +64,10 @@ const Index = () => {
                 AI-Powered Learning
               </Badge>
               
-              <h1 className="text-5xl lg:text-6xl font-bold text-home-foreground mb-6 leading-tight">
-                Study Smarter
-                <span className="bg-gradient-to-r from-home-primary to-home-secondary bg-clip-text text-transparent"> Together</span>
+              <h1 className="text-3xl lg:text-4xl font-bold text-home-foreground mb-6 leading-tight font-lexend">
+                MarkIt Learning but
+                <br />
+                <span className="text-gradient font-homemade">better</span>
               </h1>
               
               <p className="text-xl text-gray-600 mb-8 leading-relaxed">

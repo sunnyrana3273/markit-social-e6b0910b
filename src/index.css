@@ -61,10 +61,12 @@ All colors MUST be HSL for proper theming.
     --input: 0 0% 100%;
     --ring: 140 50% 45%;
 
-    /* Special Effects - Removed flashing */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--home-primary)), hsl(var(--home-secondary)));
+    /* Special Effects - Updated with new gradient colors */
+    --gradient-primary: linear-gradient(135deg, hsl(140 65% 45%), hsl(120 25% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(120 25% 60%), hsl(110 70% 50%));
     --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(140 50% 55%));
     --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 94%));
+    --gradient-glass: linear-gradient(135deg, rgba(255,255,255,0.7), rgba(255,255,255,0.3));
     
     --glow-primary: 0 0 20px hsl(var(--primary) / 0.3);
     --glow-secondary: 0 0 20px hsl(var(--secondary) / 0.3);
@@ -72,8 +74,10 @@ All colors MUST be HSL for proper theming.
     
     --shadow-card: 0 4px 20px hsl(220 14% 2% / 0.8);
     --shadow-hover: 0 8px 30px hsl(220 14% 2% / 0.9);
+    --shadow-glass: 0 8px 32px rgba(31, 38, 135, 0.37);
 
     --radius: 0.75rem;
+    --glass-border: 0 0% 100% / 0.18;
 
     --sidebar-background: 0 0% 98%;
 
@@ -103,6 +107,20 @@ All colors MUST be HSL for proper theming.
   
   .gradient-surface {
     background: var(--gradient-surface);
+  }
+  
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .glass {
+    background: var(--gradient-glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--shadow-glass);
   }
   
   .glow-primary {

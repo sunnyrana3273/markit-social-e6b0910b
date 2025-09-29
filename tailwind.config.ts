@@ -13,7 +13,28 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        'homemade': ['Homemade Apple', 'cursive'],
+        'lexend': ['Lexend Deca', 'sans-serif'],
+      },
       colors: {
+        // Home page specific colors
+        'home-background': 'hsl(var(--home-background))',
+        'home-foreground': 'hsl(var(--home-foreground))',
+        'home-surface': {
+          DEFAULT: 'hsl(var(--home-surface))',
+          hover: 'hsl(var(--home-surface-hover))',
+        },
+        'home-primary': {
+          DEFAULT: 'hsl(var(--home-primary))',
+          foreground: 'hsl(var(--home-primary-foreground))',
+          hover: 'hsl(var(--home-primary-hover))',
+        },
+        'home-secondary': {
+          DEFAULT: 'hsl(var(--home-secondary))',
+          foreground: 'hsl(var(--home-secondary-foreground))',
+          hover: 'hsl(var(--home-secondary-hover))',
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

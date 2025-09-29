@@ -15,12 +15,12 @@ All colors MUST be HSL for proper theming.
     --home-surface-hover: 0 0% 92%;
 
     /* Brand Identity */
-    --home-primary: 140 45% 25%;         /* Darker green */
-    --home-primary-hover: 140 45% 30%;
+    --home-primary: 140 50% 45%;         /* Lighter green */
+    --home-primary-hover: 140 50% 50%;
     --home-primary-foreground: 0 0% 100%;
 
-    --home-secondary: 220 60% 35%;       /* Darker blue */
-    --home-secondary-hover: 220 60% 40%;
+    --home-secondary: 220 70% 50%;       /* Brighter blue */
+    --home-secondary-hover: 220 70% 55%;
     --home-secondary-foreground: 0 0% 100%;
 
     /* Legacy Variables for Dashboard Components */
@@ -28,14 +28,14 @@ All colors MUST be HSL for proper theming.
     --foreground: 0 0% 15%;
     --surface: 0 0% 96%;
     --surface-hover: 0 0% 92%;
-    --primary: 140 45% 25%;
-    --primary-hover: 140 45% 30%;
+    --primary: 140 50% 45%;              /* Lighter green */
+    --primary-hover: 140 50% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 60% 35%;
-    --secondary-hover: 220 60% 40%;
+    --secondary: 220 70% 50%;            /* Brighter blue */
+    --secondary-hover: 220 70% 55%;
     --secondary-foreground: 0 0% 100%;
-    --success: 140 45% 25%;              /* Green - achievements */
-    --success-hover: 140 45% 30%;
+    --success: 140 50% 45%;              /* Lighter green - achievements */
+    --success-hover: 140 50% 50%;
     --warning: 31 91% 65%;               /* Orange - notifications */
     --danger: 0 84% 65%;                 /* Red - destructive actions */
 
@@ -59,11 +59,11 @@ All colors MUST be HSL for proper theming.
 
     --border: 0 0% 88%;
     --input: 0 0% 100%;
-    --ring: 140 45% 25%;
+    --ring: 140 50% 45%;
 
     /* Special Effects - Removed flashing */
     --gradient-primary: linear-gradient(135deg, hsl(var(--home-primary)), hsl(var(--home-secondary)));
-    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(140 45% 35%));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(140 50% 55%));
     --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 94%));
     
     --glow-primary: 0 0 20px hsl(var(--primary) / 0.3);

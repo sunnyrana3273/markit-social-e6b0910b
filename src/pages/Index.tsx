@@ -159,7 +159,7 @@ const Index = () => {
                 icon: Target,
                 title: "AP Course Communities",
                 description: "Join dedicated rooms for AP Calculus, Physics, and more with expert moderation.",
-                color: "text-purple-600"
+                color: "text-blue-600"
               },
               {
                 icon: Gamepad2,

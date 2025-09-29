@@ -2,19 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* MarkIt Design System - Home page with darker green/blue theme 
+/* MarkIt Design System - Unified theme
 All colors MUST be HSL for proper theming.
 */
 
 @layer base {
   :root {
-    /* Home Page Colors - Darker Green/Blue/White Theme */
+    /* Main Color Theme - Darker Green/Blue/White */
     --home-background: 0 0% 100%;        /* White background */
     --home-foreground: 0 0% 15%;         /* Dark text */
     --home-surface: 0 0% 96%;            /* Light gray surface */
     --home-surface-hover: 0 0% 92%;
 
-    /* Home Brand Identity */
+    /* Brand Identity */
     --home-primary: 140 45% 25%;         /* Darker green */
     --home-primary-hover: 140 45% 30%;
     --home-primary-foreground: 0 0% 100%;
@@ -23,53 +23,48 @@ All colors MUST be HSL for proper theming.
     --home-secondary-hover: 220 60% 40%;
     --home-secondary-foreground: 0 0% 100%;
 
-    /* Dashboard Colors - Keep Original Dark Theme */
-    --background: 220 14% 4%;
-    --foreground: 210 40% 98%;
-    --surface: 220 13% 8%;
-    --surface-hover: 220 12% 12%;
-
-    /* Brand Identity */
-    --primary: 263 85% 65%;              /* Deep purple - main brand */
-    --primary-hover: 263 85% 70%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 195 100% 65%;           /* Bright cyan - collaboration */
-    --secondary-hover: 195 100% 70%;
-    --secondary-foreground: 220 14% 4%;
-
-    /* Educational Theme */
-    --success: 142 76% 56%;              /* Green - achievements */
-    --success-hover: 142 76% 61%;
+    /* Legacy Variables for Dashboard Components */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 15%;
+    --surface: 0 0% 96%;
+    --surface-hover: 0 0% 92%;
+    --primary: 140 45% 25%;
+    --primary-hover: 140 45% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 60% 35%;
+    --secondary-hover: 220 60% 40%;
+    --secondary-foreground: 0 0% 100%;
+    --success: 140 45% 25%;              /* Green - achievements */
+    --success-hover: 140 45% 30%;
     --warning: 31 91% 65%;               /* Orange - notifications */
     --danger: 0 84% 65%;                 /* Red - destructive actions */
 
     /* UI Elements */
-    --card: 220 13% 8%;
-    --card-foreground: 210 40% 98%;
-    --card-hover: 220 12% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 15%;
+    --card-hover: 0 0% 96%;
 
-    --popover: 220 13% 10%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 15%;
 
-    --muted: 220 13% 15%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 0 0% 88%;
+    --muted-foreground: 0 0% 40%;
 
-    --accent: 220 13% 18%;
-    --accent-foreground: 210 40% 98%;
-    --accent-hover: 220 13% 22%;
+    --accent: 0 0% 92%;
+    --accent-foreground: 0 0% 15%;
+    --accent-hover: 0 0% 88%;
 
     --destructive: 0 84% 65%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 18%;
-    --input: 220 13% 10%;
-    --ring: 263 85% 65%;
+    --border: 0 0% 88%;
+    --input: 0 0% 100%;
+    --ring: 140 45% 25%;
 
-    /* Special Effects */
-    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
-    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 45%));
-    --gradient-surface: linear-gradient(180deg, hsl(var(--surface)), hsl(220 13% 6%));
+    /* Special Effects - Removed flashing */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--home-primary)), hsl(var(--home-secondary)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(140 45% 35%));
+    --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 94%));
     
     --glow-primary: 0 0 20px hsl(var(--primary) / 0.3);
     --glow-secondary: 0 0 20px hsl(var(--secondary) / 0.3);

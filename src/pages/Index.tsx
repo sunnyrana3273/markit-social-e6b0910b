@@ -14,7 +14,6 @@ import {
   Target
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import heroImage from "@/assets/hero-education.jpg";
 
 const Index = () => {
   return (
@@ -57,25 +56,25 @@ const Index = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-home-primary/10 via-home-secondary/10 to-green-100/20" />
         
         <div className="container mx-auto px-4 relative">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div className="max-w-4xl mx-auto text-center">
             <div className="animate-slide-up">
               <Badge className="mb-4 bg-home-primary/10 text-home-primary border-home-primary/20">
                 <Zap className="w-3 h-3 mr-1" />
                 AI-Powered Learning
               </Badge>
               
-              <h1 className="text-3xl lg:text-4xl font-bold text-home-foreground mb-6 leading-tight font-lexend">
+              <h1 className="text-3xl lg:text-5xl font-bold text-home-foreground mb-6 leading-tight font-lexend">
                 MarkIt Learning but
                 <br />
                 <span className="text-gradient font-homemade">better</span>
               </h1>
               
-              <p className="text-xl text-gray-600 mb-8 leading-relaxed">
+              <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
                 Transform your learning with AI-assisted whiteboards, real-time collaboration, 
                 and vibrant study communities. Built for the next generation of students.
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-4 mb-8">
+              <div className="flex flex-col sm:flex-row gap-4 mb-8 justify-center">
                 <Link to="/app">
                   <Button size="lg" className="group bg-home-primary hover:bg-home-primary-hover text-white">
                     Start a Study Session
@@ -88,7 +87,7 @@ const Index = () => {
                 </Button>
               </div>
               
-              <div className="flex items-center gap-6 text-sm text-gray-600">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-6 text-sm text-gray-600">
                 <div className="flex items-center gap-2">
                   <div className="flex -space-x-2">
                     <div className="w-8 h-8 rounded-full bg-home-primary border-2 border-home-background" />
@@ -104,14 +103,6 @@ const Index = () => {
                   <span className="ml-1">4.9 rating</span>
                 </div>
               </div>
-            </div>
-            <div className="relative">
-              <img 
-                src={heroImage} 
-                alt="Students collaborating on MarkIt platform"
-                className="rounded-2xl shadow-lg w-full"
-              />
-              <div className="absolute inset-0 bg-gradient-to-br from-home-primary/10 to-home-secondary/10 rounded-2xl" />
             </div>
           </div>
         </div>

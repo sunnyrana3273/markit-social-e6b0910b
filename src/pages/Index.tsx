@@ -32,9 +32,6 @@ const Index = () => {
             <Link to="/features" className="text-gray-600 hover:text-home-foreground transition-colors">
               Features
             </Link>
-            <Link to="/communities" className="text-gray-600 hover:text-home-foreground transition-colors">
-              Communities
-            </Link>
             <Link to="/pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
               Pricing
             </Link>
@@ -169,6 +166,209 @@ const Index = () => {
                 </Card>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-home-foreground mb-4">
+              Choose Your Plan
+            </h2>
+            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+              Start free and upgrade as you grow. All plans include core features.
+            </p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Free Plan */}
+            <Card className="p-8 bg-home-surface border-gray-200">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-home-foreground mb-2">Free</h3>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-4xl font-bold text-home-foreground">$0</span>
+                  <span className="text-gray-600">/month</span>
+                </div>
+                <p className="text-gray-600">Perfect for getting started</p>
+              </div>
+              
+              <Link to="/auth">
+                <Button variant="outline" className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
+                  Get Started
+                </Button>
+              </Link>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">5 AI assistance queries/day</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Basic whiteboard tools</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Up to 3 collaborators</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Public communities access</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">1 GB storage</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Plus Plan */}
+            <Card className="p-8 bg-white border-2 border-home-primary relative">
+              <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                <Badge className="bg-home-primary text-white">Most Popular</Badge>
+              </div>
+              
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-home-foreground mb-2">Plus</h3>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-4xl font-bold text-home-foreground">$7</span>
+                  <span className="text-gray-600">/month</span>
+                </div>
+                <p className="text-gray-600">For serious learners</p>
+              </div>
+              
+              <Link to="/auth">
+                <Button className="w-full mb-6 bg-home-primary hover:bg-home-primary-hover text-white">
+                  Get Started
+                </Button>
+              </Link>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">50 AI assistance queries/day</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Advanced whiteboard tools</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Up to 10 collaborators</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Voice calls enabled</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Priority community support</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">10 GB storage</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Custom themes</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* Pro Plan */}
+            <Card className="p-8 bg-home-surface border-gray-200">
+              <div className="mb-6">
+                <h3 className="text-2xl font-bold text-home-foreground mb-2">Pro</h3>
+                <div className="flex items-baseline gap-1 mb-4">
+                  <span className="text-4xl font-bold text-home-foreground">$15</span>
+                  <span className="text-gray-600">/month</span>
+                </div>
+                <p className="text-gray-600">For power users & groups</p>
+              </div>
+              
+              <Link to="/auth">
+                <Button variant="outline" className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
+                  Get Started
+                </Button>
+              </Link>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Unlimited AI assistance</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Premium whiteboard tools</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Unlimited collaborators</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Voice & video calls</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Private communities</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">100 GB storage</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Advanced analytics</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  </div>
+                  <span className="text-sm text-gray-600">Priority support 24/7</span>
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
       </section>

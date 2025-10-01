@@ -11,6 +11,7 @@ import Friends from "./pages/Friends";
 import StudySession from "./pages/StudySession";
 import Features from "./pages/Features";
 import Pricing from "./pages/Pricing";
+import Upload from "./pages/Upload";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/features" element={<Features />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/app" element={<Dashboard />} />
+          <Route path="/upload" element={<Upload />} />
           <Route path="/communities" element={<Communities />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/session/:sessionId" element={<StudySession />} />

@@ -1,27 +1,17 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { 
   Upload, 
   FileText, 
-  CheckCircle, 
-  AlertCircle, 
   X,
-  Download,
-  Trash2,
-  Edit3,
   ArrowLeft,
   BookOpen,
-  Settings,
-  Bell,
-  User
+  Eye
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface Document {
   id: string;
@@ -30,63 +20,38 @@ interface Document {
   file_size: number;
   file_type: string;
   created_at: string;
-  updated_at: string;
 }
 
 const Upload = () => {
-  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [editingDoc, setEditingDoc] = useState<string | null>(null);
-  const [newName, setNewName] = useState("");
+  const [viewingDoc, setViewingDoc] = useState<Document | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  // Get user once on mount
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
       setLoading(false);
+      if (user) {
+        loadDocuments();
+      }
     };
-
     getUser();
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      loadDocuments();
-    }
-  }, [user]);
-
-  const getUserDisplayName = () => {
-    if (!user) return "User";
-    return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || "User";
-  };
-
-  const getUserAvatar = () => {
-    if (!user) return null;
-    return user.user_metadata?.avatar_url || user.user_metadata?.picture;
-  };
-
-  const getUserInitials = () => {
-    if (!user) return "U";
-    const name = getUserDisplayName();
-    const names = name.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-    }
-    return name[0]?.toUpperCase() || "U";
-  };
-
+  // Load documents function
   const loadDocuments = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const response = await fetch('http://localhost:8081/api/documents', {
+      const response = await fetch('http://localhost:8081/api/upload/documents', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
         }
@@ -130,7 +95,6 @@ const Upload = () => {
     if (!selectedFile) return;
 
     setUploading(true);
-    setUploadProgress(0);
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -141,11 +105,6 @@ const Upload = () => {
       const formData = new FormData();
       formData.append('document', selectedFile);
 
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-
       const response = await fetch('http://localhost:8081/api/upload/pdf', {
         method: 'POST',
         headers: {
@@ -154,14 +113,11 @@ const Upload = () => {
         body: formData
       });
 
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
       if (response.ok) {
         const data = await response.json();
         toast({
           title: "Upload successful",
-          description: `${data.document.originalName} has been uploaded`,
+          description: `${data.document.file_name} has been uploaded`,
         });
         
         setSelectedFile(null);
@@ -181,101 +137,11 @@ const Upload = () => {
       });
     } finally {
       setUploading(false);
-      setUploadProgress(0);
     }
   };
 
-  const handleDownload = async (document: Document) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(`http://localhost:8081/api/documents/${document.id}/download`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = document.file_name;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }
-    } catch (error) {
-      toast({
-        title: "Download failed",
-        description: "Failed to download document",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleDelete = async (documentId: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(`http://localhost:8081/api/documents/${documentId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Document deleted",
-          description: "Document has been successfully deleted",
-        });
-        loadDocuments();
-      }
-    } catch (error) {
-      toast({
-        title: "Delete failed",
-        description: "Failed to delete document",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleRename = async (documentId: string) => {
-    if (!newName.trim()) return;
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(`http://localhost:8081/api/documents/${documentId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ originalName: newName })
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Document renamed",
-          description: "Document name has been updated",
-        });
-        setEditingDoc(null);
-        setNewName("");
-        loadDocuments();
-      }
-    } catch (error) {
-      toast({
-        title: "Rename failed",
-        description: "Failed to rename document",
-        variant: "destructive",
-      });
-    }
+  const handleViewDocument = (doc: Document) => {
+    setViewingDoc(doc);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -307,6 +173,50 @@ const Upload = () => {
     );
   }
 
+  if (viewingDoc) {
+    return (
+      <div className="min-h-screen bg-gradient-surface">
+        {/* Header */}
+        <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setViewingDoc(null)}
+                className="px-4 py-2 text-home-foreground hover:bg-home-surface rounded-md transition-colors"
+              >
+                <X className="w-4 h-4 mr-2 inline" />
+                Close
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* PDF Viewer */}
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-home-foreground">{viewingDoc.file_name}</h1>
+            <p className="text-gray-600">{formatFileSize(viewingDoc.file_size)} • {formatDate(viewingDoc.created_at)}</p>
+          </div>
+          
+          <Card className="p-4">
+            <iframe
+              src={`http://localhost:8081/api/upload/file/${viewingDoc.file_path.split('/').pop()}`}
+              className="w-full h-[80vh] border-0 rounded"
+              title={viewingDoc.file_name}
+            />
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-surface">
       {/* Header */}
@@ -317,31 +227,6 @@ const Upload = () => {
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Bell className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Settings className="w-5 h-5" />
-            </Button>
-            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center overflow-hidden">
-              {getUserAvatar() ? (
-                <img 
-                  src={getUserAvatar()} 
-                  alt={getUserDisplayName()}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-              ) : null}
-              <span className={`text-white text-sm font-medium ${getUserAvatar() ? 'hidden' : ''}`}>
-                {getUserInitials()}
-              </span>
-            </div>
           </div>
         </div>
       </header>
@@ -358,13 +243,9 @@ const Upload = () => {
 
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
-            <Badge className="mb-4 bg-home-primary/10 text-home-primary border-home-primary/20 hover:bg-home-primary hover:text-white transition-colors duration-200">
-              <Upload className="w-3 h-3 mr-1" />
-              Document Upload
-            </Badge>
-            <h1 className="text-3xl font-bold text-home-foreground mb-4">Upload Your Documents</h1>
+            <h1 className="text-3xl font-bold text-home-foreground mb-4">Upload PDF Documents</h1>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              Upload PDF documents to your personal library. Access them anytime during your study sessions.
+              Upload PDF documents and view them directly in your browser.
             </p>
           </div>
 
@@ -403,26 +284,18 @@ const Upload = () => {
                       <p className="font-medium text-home-foreground">{selectedFile.name}</p>
                       <p className="text-sm text-gray-600">{formatFileSize(selectedFile.size)}</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
+                    <button
                       onClick={() => {
                         setSelectedFile(null);
                         if (fileInputRef.current) {
                           fileInputRef.current.value = '';
                         }
                       }}
+                      className="p-2 hover:bg-gray-100 rounded-md transition-colors"
                     >
                       <X className="w-4 h-4" />
-                    </Button>
+                    </button>
                   </div>
-                  
-                  {uploading && (
-                    <div className="mb-4">
-                      <Progress value={uploadProgress} className="mb-2" />
-                      <p className="text-sm text-gray-600">Uploading... {uploadProgress}%</p>
-                    </div>
-                  )}
                   
                   <Button 
                     onClick={handleUpload}
@@ -465,76 +338,20 @@ const Upload = () => {
                         <FileText className="w-5 h-5 text-red-600" />
                       </div>
                       <div>
-                        {editingDoc === doc.id ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={newName}
-                              onChange={(e) => setNewName(e.target.value)}
-                              className="px-2 py-1 border border-gray-300 rounded text-sm"
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleRename(doc.id);
-                                }
-                              }}
-                              autoFocus
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => handleRename(doc.id)}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setEditingDoc(null);
-                                setNewName("");
-                              }}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <p className="font-medium text-home-foreground">{doc.file_name}</p>
-                        )}
+                        <p className="font-medium text-home-foreground">{doc.file_name}</p>
                         <p className="text-sm text-gray-600">
                           {formatFileSize(doc.file_size)} • {formatDate(doc.created_at)}
                         </p>
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDownload(doc)}
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setEditingDoc(doc.id);
-                          setNewName(doc.file_name);
-                        }}
-                        className="text-gray-600 hover:text-gray-700"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(doc.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Button
+                      onClick={() => handleViewDocument(doc)}
+                      className="bg-home-primary hover:bg-home-primary-hover text-white"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View
+                    </Button>
                   </div>
                 ))}
               </div>

@@ -1,0 +1,152 @@
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
+const { createClient } = require('@supabase/supabase-js');
+
+const config = require('../config');
+const { authenticateUser } = require('../middleware/auth');
+
+const router = express.Router();
+const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${uuidv4()}-${Date.now()}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
+  }
+});
+
+// File filter for PDFs only
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF files are allowed'), false);
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: config.upload.maxFileSize,
+    files: 1
+  }
+});
+
+// Upload single PDF file
+router.post('/pdf', authenticateUser, upload.single('document'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'No file uploaded',
+        message: 'Please select a PDF file to upload'
+      });
+    }
+
+    const userId = req.user.id;
+
+    // Store file metadata in uploaded_files table
+    const { data, error } = await supabase
+      .from('uploaded_files')
+      .insert([{
+        clerk_user_id: userId,
+        file_name: req.file.originalname,
+        file_path: req.file.path,
+        file_size: req.file.size,
+        file_type: req.file.mimetype,
+        mode: 'document'
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      // Clean up uploaded file if database insert fails
+      fs.unlinkSync(req.file.path);
+      throw error;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Document uploaded successfully',
+      document: {
+        id: data.id,
+        file_name: data.file_name,
+        file_size: data.file_size,
+        created_at: data.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({
+      error: 'Upload failed',
+      message: error.message || 'Failed to upload document'
+    });
+  }
+});
+
+// Get all documents for the authenticated user
+router.get('/documents', authenticateUser, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const { data, error } = await supabase
+      .from('uploaded_files')
+      .select('*')
+      .eq('clerk_user_id', userId)
+      .eq('mode', 'document')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      documents: data || []
+    });
+
+  } catch (error) {
+    console.error('Get documents error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch documents',
+      message: error.message
+    });
+  }
+});
+
+// Serve uploaded files
+router.get('/file/:filename', authenticateUser, (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(__dirname, '../uploads', filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        error: 'File not found',
+        message: 'The requested file was not found'
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.sendFile(filePath);
+
+  } catch (error) {
+    console.error('File serve error:', error);
+    res.status(500).json({
+      error: 'Failed to serve file',
+      message: error.message
+    });
+  }
+});
+
+module.exports = router;

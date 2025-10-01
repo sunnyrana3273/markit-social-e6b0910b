@@ -19,79 +19,9 @@ import { Link } from "react-router-dom";
 
 const Friends = () => {
   // Mock data - will be replaced with real data from Supabase
-  const friends = [
-    { 
-      id: 1, 
-      name: "Alex Chen", 
-      avatar: "AC", 
-      status: "online", 
-      lastActive: "now",
-      studyStreak: 12,
-      mutualFriends: 3,
-      favoriteSubjects: ["AP Calculus", "Physics"],
-      sessionsThisWeek: 8
-    },
-    { 
-      id: 2, 
-      name: "Sarah Kim", 
-      avatar: "SK", 
-      status: "studying", 
-      lastActive: "2 hours ago",
-      studyStreak: 7,
-      mutualFriends: 5,
-      favoriteSubjects: ["Chemistry", "Biology"],
-      sessionsThisWeek: 6
-    },
-    { 
-      id: 3, 
-      name: "Mike Johnson", 
-      avatar: "MJ", 
-      status: "offline", 
-      lastActive: "1 day ago",
-      studyStreak: 3,
-      mutualFriends: 2,
-      favoriteSubjects: ["SAT Prep", "English"],
-      sessionsThisWeek: 4
-    },
-    { 
-      id: 4, 
-      name: "Emily Rodriguez", 
-      avatar: "ER", 
-      status: "online", 
-      lastActive: "now",
-      studyStreak: 15,
-      mutualFriends: 7,
-      favoriteSubjects: ["AP History", "Literature"],
-      sessionsThisWeek: 10
-    },
-    { 
-      id: 5, 
-      name: "David Park", 
-      avatar: "DP", 
-      status: "studying", 
-      lastActive: "30 minutes ago",
-      studyStreak: 5,
-      mutualFriends: 1,
-      favoriteSubjects: ["Computer Science", "Math"],
-      sessionsThisWeek: 7
-    },
-    { 
-      id: 6, 
-      name: "Lisa Wang", 
-      avatar: "LW", 
-      status: "offline", 
-      lastActive: "3 hours ago",
-      studyStreak: 21,
-      mutualFriends: 4,
-      favoriteSubjects: ["AP Spanish", "Art History"],
-      sessionsThisWeek: 5
-    }
-  ];
+  const friends: any[] = [];
 
-  const friendRequests = [
-    { id: 1, name: "Jordan Smith", avatar: "JS", mutualFriends: 2 },
-    { id: 2, name: "Taylor Brown", avatar: "TB", mutualFriends: 1 },
-  ];
+  const friendRequests: any[] = [];
 
   const onlineFriends = friends.filter(f => f.status === "online").length;
   const studyingFriends = friends.filter(f => f.status === "studying").length;
@@ -196,63 +126,71 @@ const Friends = () => {
             {/* Friends List */}
             <Card className="p-6 bg-white border border-gray-200">
               <h2 className="text-xl font-semibold text-home-foreground mb-4">All Friends ({friends.length})</h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                {friends.map((friend) => (
-                  <div key={friend.id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-start gap-4">
-                      <div className="relative">
-                        <div className="w-12 h-12 rounded-full bg-home-secondary flex items-center justify-center">
-                          <span className="text-sm font-medium text-white">{friend.avatar}</span>
-                        </div>
-                        <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                          friend.status === 'online' ? 'bg-green-500' : 
-                          friend.status === 'studying' ? 'bg-yellow-500' : 'bg-gray-400'
-                        }`} />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-medium text-home-foreground truncate">{friend.name}</h3>
-                          <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
-                            <MessageSquare className="w-4 h-4" />
-                          </Button>
+              {friends.length > 0 ? (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {friends.map((friend) => (
+                    <div key={friend.id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
+                      <div className="flex items-start gap-4">
+                        <div className="relative">
+                          <div className="w-12 h-12 rounded-full bg-home-secondary flex items-center justify-center">
+                            <span className="text-sm font-medium text-white">{friend.avatar}</span>
+                          </div>
+                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                            friend.status === 'online' ? 'bg-green-500' : 
+                            friend.status === 'studying' ? 'bg-yellow-500' : 'bg-gray-400'
+                          }`} />
                         </div>
                         
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-3 text-xs text-gray-600">
-                            <span className="capitalize">{friend.status}</span>
-                            <span>•</span>
-                            <span>{friend.lastActive}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-medium text-home-foreground truncate">{friend.name}</h3>
+                            <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
                           </div>
                           
-                          <div className="flex items-center gap-4 text-xs">
-                            <div className="flex items-center gap-1">
-                              <Zap className="w-3 h-3 text-orange-500" />
-                              <span>{friend.studyStreak} day streak</span>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-3 text-xs text-gray-600">
+                              <span className="capitalize">{friend.status}</span>
+                              <span>•</span>
+                              <span>{friend.lastActive}</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Trophy className="w-3 h-3 text-yellow-500" />
-                              <span>{friend.sessionsThisWeek} sessions</span>
+                            
+                            <div className="flex items-center gap-4 text-xs">
+                              <div className="flex items-center gap-1">
+                                <Zap className="w-3 h-3 text-orange-500" />
+                                <span>{friend.studyStreak} day streak</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Trophy className="w-3 h-3 text-yellow-500" />
+                                <span>{friend.sessionsThisWeek} sessions</span>
+                              </div>
                             </div>
+                            
+                            <div className="flex flex-wrap gap-1">
+                              {friend.favoriteSubjects.slice(0, 2).map((subject, index) => (
+                                <Badge key={index} className="bg-home-primary/10 text-home-primary border-home-primary/20 text-xs">
+                                  {subject}
+                                </Badge>
+                              ))}
+                            </div>
+                            
+                            {friend.mutualFriends > 0 && (
+                              <p className="text-xs text-gray-500">{friend.mutualFriends} mutual friends</p>
+                            )}
                           </div>
-                          
-                          <div className="flex flex-wrap gap-1">
-                            {friend.favoriteSubjects.slice(0, 2).map((subject, index) => (
-                              <Badge key={index} className="bg-home-primary/10 text-home-primary border-home-primary/20 text-xs">
-                                {subject}
-                              </Badge>
-                            ))}
-                          </div>
-                          
-                          {friend.mutualFriends > 0 && (
-                            <p className="text-xs text-gray-500">{friend.mutualFriends} mutual friends</p>
-                          )}
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-600">
+                  <Users className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                  <p className="text-lg mb-2">No friends yet</p>
+                  <p className="text-sm">Start connecting with other students to build your study network!</p>
+                </div>
+              )}
             </Card>
           </div>
 

@@ -20,7 +20,6 @@ const Communities = () => {
       courses: [
         { id: 1, name: "AP Calculus AB" },
         { id: 2, name: "AP Calculus BC" },
-        { id: 3, name: "About the AP Computer Science Courses" },
         { id: 4, name: "AP Computer Science A" },
         { id: 5, name: "AP Computer Science Principles" },
         { id: 6, name: "AP Precalculus" },
@@ -149,38 +148,6 @@ const Communities = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Quick Stats */}
-            <Card className="p-6 bg-white border border-gray-200">
-              <h3 className="font-semibold text-home-foreground mb-4">AP Courses</h3>
-              <div className="text-center py-4">
-                <div className="w-16 h-16 bg-home-primary rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-white">14</span>
-                </div>
-                <p className="text-sm text-gray-600">Total Courses Available</p>
-              </div>
-            </Card>
-
-            {/* Popular Subjects */}
-            <Card className="p-6 bg-white border border-gray-200">
-              <h3 className="font-semibold text-home-foreground mb-4">Popular Subjects</h3>
-              <div className="space-y-3">
-                {[
-                  { name: "AP Calculus", count: 12 },
-                  { name: "AP Physics", count: 8 },
-                  { name: "SAT Prep", count: 15 },
-                  { name: "AP Chemistry", count: 6 },
-                  { name: "AP Biology", count: 9 }
-                ].map((subject, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <span className="text-sm text-home-foreground">{subject.name}</span>
-                    <Badge variant="secondary" className="bg-home-surface text-gray-600">
-                      {subject.count}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
             {/* Community Tips */}
             <Card className="p-6 bg-home-primary text-white">
               <div className="text-center">

@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   BookOpen, 
   Users,
@@ -10,11 +11,61 @@ import {
   Bell,
   Settings
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
+
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+}
 
 const Communities = () => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  useEffect(() => {
+    const initializeUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      setUser(session.user);
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('clerk_user_id', session.user.id)
+        .single();
+
+      if (profileData) {
+        setProfile(profileData);
+      }
+    };
+
+    initializeUser();
+  }, [navigate]);
+
+  const getInitials = () => {
+    if (profile?.first_name && profile?.last_name) {
+      return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
+    }
+    if (profile?.first_name) {
+      return profile.first_name[0].toUpperCase();
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase();
+    }
+    return 'U';
+  };
   // AP Course Communities organized by subject
   const courseCategories = [
     {
@@ -92,9 +143,12 @@ const Communities = () => {
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Settings className="w-5 h-5" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center">
-              <span className="text-white text-sm font-medium">JD</span>
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.image_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture} />
+              <AvatarFallback className="bg-home-primary text-white text-sm font-medium">
+                {getInitials()}
+              </AvatarFallback>
+            </Avatar>
           </div>
         </div>
       </header>

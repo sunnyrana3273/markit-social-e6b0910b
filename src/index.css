@@ -160,6 +160,10 @@ All colors MUST be HSL for proper theming.
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   
+  html {
+    scroll-behavior: smooth;
+  }
+  
   /* Custom scrollbars */
   ::-webkit-scrollbar {
     width: 8px;

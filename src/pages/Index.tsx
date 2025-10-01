@@ -29,12 +29,12 @@ const Index = () => {
           </div>
           
           <nav className="hidden md:flex items-center gap-6">
-            <Link to="/features" className="text-gray-600 hover:text-home-foreground transition-colors">
+            <a href="#features" className="text-gray-600 hover:text-home-foreground transition-colors">
               Features
-            </Link>
-            <Link to="/pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
+            </a>
+            <a href="#pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
               Pricing
-            </Link>
+            </a>
           </nav>
           
           <div className="flex items-center gap-3">
@@ -106,7 +106,7 @@ const Index = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 bg-home-surface">
+      <section id="features" className="py-20 bg-home-surface scroll-mt-16">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-home-foreground mb-4">
@@ -171,7 +171,7 @@ const Index = () => {
       </section>
 
       {/* Pricing Section */}
-      <section className="py-20 bg-white">
+      <section id="pricing" className="py-20 bg-white scroll-mt-16">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-home-foreground mb-4">

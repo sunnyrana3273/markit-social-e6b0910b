@@ -29,12 +29,12 @@ const Index = () => {
           </div>
           
           <nav className="hidden md:flex items-center gap-6">
-            <a href="#features" className="text-gray-600 hover:text-home-foreground transition-colors">
+            <Link to="/features" className="text-gray-600 hover:text-home-foreground transition-colors">
               Features
-            </a>
-            <a href="#pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
+            </Link>
+            <Link to="/pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
               Pricing
-            </a>
+            </Link>
           </nav>
           
           <div className="flex items-center gap-3">

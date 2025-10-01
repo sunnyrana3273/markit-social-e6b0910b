@@ -9,6 +9,8 @@ import Dashboard from "./pages/Dashboard";
 import Communities from "./pages/Communities";
 import Friends from "./pages/Friends";
 import StudySession from "./pages/StudySession";
+import Features from "./pages/Features";
+import Pricing from "./pages/Pricing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +23,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/features" element={<Features />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/app" element={<Dashboard />} />
           <Route path="/communities" element={<Communities />} />
           <Route path="/friends" element={<Friends />} />

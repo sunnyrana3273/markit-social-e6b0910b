@@ -4,63 +4,44 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { 
   BookOpen, 
-  Users, 
+  Users,
   Plus, 
   Search,
-  Clock,
-  Star,
-  MessageSquare,
-  Settings,
-  Bell
+  Bell,
+  Settings
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Communities = () => {
-  // Mock data - will be replaced with real data from Supabase
-  const communities = [
-    { 
-      id: 1, 
-      name: "AP Calculus Study Group", 
-      members: 245, 
-      description: "Master calculus concepts together with guided practice sessions",
-      course: "AP Calculus AB",
-      activity: "Very Active",
-      rating: 4.8,
-      isJoined: true
+  // AP Course Communities organized by subject
+  const courseCategories = [
+    {
+      category: "Math and Computer Science",
+      courses: [
+        { id: 1, name: "AP Calculus AB" },
+        { id: 2, name: "AP Calculus BC" },
+        { id: 3, name: "About the AP Computer Science Courses" },
+        { id: 4, name: "AP Computer Science A" },
+        { id: 5, name: "AP Computer Science Principles" },
+        { id: 6, name: "AP Precalculus" },
+        { id: 7, name: "AP Statistics" }
+      ]
     },
-    { 
-      id: 2, 
-      name: "Physics Problem Solvers", 
-      members: 189, 
-      description: "Tackle challenging physics problems step by step",
-      course: "AP Physics 1",
-      activity: "Active",
-      rating: 4.6,
-      isJoined: false
-    },
-    { 
-      id: 3, 
-      name: "Chemistry Lab Partners", 
-      members: 156, 
-      description: "Virtual chemistry lab sessions and concept discussions",
-      course: "AP Chemistry",
-      activity: "Moderate",
-      rating: 4.5,
-      isJoined: false
-    },
-    { 
-      id: 4, 
-      name: "SAT Math Mastery", 
-      members: 432, 
-      description: "Comprehensive SAT math preparation with practice tests",
-      course: "SAT Prep",
-      activity: "Very Active",
-      rating: 4.9,
-      isJoined: true
-    },
+    {
+      category: "Sciences",
+      courses: [
+        { id: 8, name: "AP Biology" },
+        { id: 9, name: "AP Chemistry" },
+        { id: 10, name: "AP Environmental Science" },
+        { id: 11, name: "AP Physics 1: Algebra-Based" },
+        { id: 12, name: "AP Physics 2: Algebra-Based" },
+        { id: 13, name: "AP Physics C: Electricity and Magnetism" },
+        { id: 14, name: "AP Physics C: Mechanics" }
+      ]
+    }
   ];
 
-  const myCommunitiesCount = communities.filter(c => c.isJoined).length;
+  
 
   return (
     <div className="min-h-screen bg-home-background font-lexend">
@@ -142,79 +123,41 @@ const Communities = () => {
               </div>
             </Card>
 
-            {/* Communities Grid */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {communities.map((community) => (
-                <Card key={community.id} className="p-6 bg-white border border-gray-200 hover:shadow-lg transition-shadow">
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-xl font-semibold text-home-foreground">{community.name}</h3>
-                          {community.isJoined && (
-                            <Badge className="bg-home-primary/10 text-home-primary border-home-primary/20">
-                              Joined
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-gray-600 text-sm mb-3">{community.description}</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <div className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
-                        <span>{community.members} members</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{community.activity}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Star className="w-4 h-4 text-yellow-500" />
-                        <span>{community.rating}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <Badge className="bg-home-secondary/10 text-home-secondary border-home-secondary/20">
-                        {community.course}
-                      </Badge>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="border-gray-300 text-gray-600 hover:bg-gray-100">
-                          <MessageSquare className="w-4 h-4" />
-                        </Button>
-                        {community.isJoined ? (
-                          <Button size="sm" className="bg-home-primary hover:bg-home-primary-hover text-white">
-                            Open
-                          </Button>
-                        ) : (
-                          <Button variant="outline" size="sm" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                            Join
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+            {/* AP Courses Grid */}
+            <div className="grid md:grid-cols-2 gap-8">
+              {courseCategories.map((category) => (
+                <div key={category.category} className="space-y-4">
+                  <h2 className="text-2xl font-bold text-home-foreground border-t-4 border-gray-900 pt-4">
+                    {category.category}
+                  </h2>
+                  <div className="space-y-3">
+                    {category.courses.map((course) => (
+                      <Link 
+                        key={course.id}
+                        to={`/course/${course.id}`}
+                        className="flex items-center justify-between p-4 bg-white border-b border-gray-200 hover:bg-gray-50 transition-colors group"
+                      >
+                        <span className="text-home-foreground font-medium">{course.name}</span>
+                        <span className="text-gray-400 group-hover:text-home-primary transition-colors">›</span>
+                      </Link>
+                    ))}
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* My Communities */}
+            {/* Quick Stats */}
             <Card className="p-6 bg-white border border-gray-200">
-              <h3 className="font-semibold text-home-foreground mb-4">My Communities</h3>
+              <h3 className="font-semibold text-home-foreground mb-4">AP Courses</h3>
               <div className="text-center py-4">
                 <div className="w-16 h-16 bg-home-primary rounded-full flex items-center justify-center mx-auto mb-3">
-                  <span className="text-2xl font-bold text-white">{myCommunitiesCount}</span>
+                  <span className="text-2xl font-bold text-white">14</span>
                 </div>
-                <p className="text-sm text-gray-600">Communities Joined</p>
+                <p className="text-sm text-gray-600">Total Courses Available</p>
               </div>
-              <Button variant="outline" className="w-full border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                View My Communities
-              </Button>
             </Card>
 
             {/* Popular Subjects */}

@@ -12,7 +12,10 @@ import {
   Trophy,
   Calendar,
   Settings,
-  Bell
+  Bell,
+  File,
+  FileText,
+  Image as ImageIcon
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
@@ -26,10 +29,19 @@ interface Profile {
   email: string;
 }
 
+interface UploadedFile {
+  id: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,6 +68,20 @@ const Dashboard = () => {
           console.error('Error fetching profile:', error);
         } else {
           setProfile(profileData);
+        }
+
+        // Fetch recent uploaded files (last 3)
+        const { data: filesData, error: filesError } = await supabase
+          .from('uploaded_files')
+          .select('id, file_name, file_type, file_size, created_at')
+          .eq('clerk_user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(3);
+
+        if (filesError) {
+          console.error('Error fetching files:', filesError);
+        } else {
+          setRecentFiles(filesData || []);
         }
       } catch (error) {
         console.error('Error initializing user:', error);
@@ -103,11 +129,36 @@ const Dashboard = () => {
     return 'U';
   };
 
-  // Mock data - will be replaced with real data from Supabase
-  const recentSessions = [
-    { id: 1, title: "AP Calculus Study Group", participants: 5, lastActive: "2 hours ago", course: "AP Calculus AB" },
-    { id: 2, title: "Physics Problem Solving", participants: 3, lastActive: "1 day ago", course: "AP Physics 1" },
-  ];
+  // Helper function to get file icon
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) return <ImageIcon className="w-6 h-6" />;
+    if (fileType.includes('pdf') || fileType.includes('document')) return <FileText className="w-6 h-6" />;
+    return <File className="w-6 h-6" />;
+  };
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Helper function to format relative time
+  const formatRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+    return date.toLocaleDateString();
+  };
 
   const friends = [
     { id: 1, name: "Alex Chen", status: "online", avatar: "AC" },
@@ -237,44 +288,42 @@ const Dashboard = () => {
               </Card>
             </div>
 
-            {/* Recent Sessions */}
+            {/* Recent Studying Sessions */}
             <Card className="p-6 bg-white border border-gray-200">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-home-foreground">Recent Sessions</h2>
-                <Link to="/sessions">
-                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">View All</Button>
+                <h2 className="text-xl font-semibold text-home-foreground">Recent Studying Sessions</h2>
+                <Link to="/upload">
+                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">See more files/sessions</Button>
                 </Link>
               </div>
               
               <div className="space-y-3">
-                {recentSessions.map((session) => (
-                  <div key={session.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-home-primary rounded-lg flex items-center justify-center">
-                        <BookOpen className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-medium text-home-foreground">{session.title}</h3>
-                        <div className="flex items-center gap-3 text-sm text-gray-600">
-                          <span>{session.participants} participants</span>
-                          <span>•</span>
-                          <span>{session.lastActive}</span>
+                {recentFiles.length > 0 ? (
+                  recentFiles.map((file) => (
+                    <div key={file.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-home-primary/10 rounded-lg flex items-center justify-center text-home-primary">
+                          {getFileIcon(file.file_type)}
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-home-foreground truncate max-w-md">{file.file_name}</h3>
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <span>{formatFileSize(file.file_size)}</span>
+                            <span>•</span>
+                            <span>{formatRelativeTime(file.created_at)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge className="bg-home-secondary/10 text-home-secondary border-home-secondary/20">{session.course}</Badge>
                       <Button variant="outline" size="sm" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                        Join
+                        Open
                       </Button>
                     </div>
-                  </div>
-                ))}
-                
-                {recentSessions.length === 0 && (
+                  ))
+                ) : (
                   <div className="text-center py-8 text-gray-600">
-                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No recent sessions. Start your first study session!</p>
+                    <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="mb-2">None</p>
+                    <p className="text-sm">Upload your first file to start studying!</p>
                   </div>
                 )}
               </div>

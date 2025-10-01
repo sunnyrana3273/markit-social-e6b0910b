@@ -3,7 +3,6 @@ import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
 import { 
   Sparkles, 
   Users, 
@@ -60,62 +59,8 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
   }, [selectedElements]);
 
   const handleUploadDocument = useCallback(() => {
-    // Create a file input element
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.pdf';
-    input.style.display = 'none';
-    
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      
-      if (file.type !== 'application/pdf') {
-        alert('Please select a PDF file');
-        return;
-      }
-      
-      if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        alert('File size must be less than 10MB');
-        return;
-      }
-      
-      try {
-        // Get current session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          alert('Please sign in to upload documents');
-          return;
-        }
-        
-        const formData = new FormData();
-        formData.append('document', file);
-        
-        const response = await fetch('http://localhost:8081/api/upload/pdf', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          },
-          body: formData
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          alert(`Document "${data.document.originalName}" uploaded successfully!`);
-        } else {
-          const error = await response.json();
-          alert(`Upload failed: ${error.message}`);
-        }
-      } catch (error) {
-        console.error('Upload error:', error);
-        alert('Upload failed. Please try again.');
-      }
-    };
-    
-    // Trigger file selection
-    document.body.appendChild(input);
-    input.click();
-    document.body.removeChild(input);
+    // TODO: Implement document upload
+    console.log("Upload document");
   }, []);
 
   const handleExportBoard = useCallback(() => {

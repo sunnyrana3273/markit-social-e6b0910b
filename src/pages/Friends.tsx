@@ -16,52 +16,8 @@ import {
   Zap
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
 
 const Friends = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      setLoading(false);
-    };
-
-    getUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Get user's display name and avatar
-  const getUserDisplayName = () => {
-    if (!user) return "User";
-    return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || "User";
-  };
-
-  const getUserAvatar = () => {
-    if (!user) return null;
-    return user.user_metadata?.avatar_url || user.user_metadata?.picture;
-  };
-
-  const getUserInitials = () => {
-    if (!user) return "U";
-    const name = getUserDisplayName();
-    const names = name.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-    }
-    return name[0]?.toUpperCase() || "U";
-  };
-
   // Mock data - will be replaced with real data from Supabase
   const friends = [
     { 
@@ -173,22 +129,8 @@ const Friends = () => {
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Settings className="w-5 h-5" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center overflow-hidden">
-              {getUserAvatar() ? (
-                <img 
-                  src={getUserAvatar()} 
-                  alt={getUserDisplayName()}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Hide the image and show initials if it fails to load
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-              ) : null}
-              <span className={`text-white text-sm font-medium ${getUserAvatar() ? 'hidden' : ''}`}>
-                {getUserInitials()}
-              </span>
+            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center">
+              <span className="text-white text-sm font-medium">JD</span>
             </div>
           </div>
         </div>
@@ -296,7 +238,7 @@ const Friends = () => {
                           
                           <div className="flex flex-wrap gap-1">
                             {friend.favoriteSubjects.slice(0, 2).map((subject, index) => (
-                              <Badge key={index} className="bg-home-primary/10 text-home-primary border-home-primary/20 text-xs hover:bg-home-primary hover:text-white transition-colors duration-200 cursor-pointer">
+                              <Badge key={index} className="bg-home-primary/10 text-home-primary border-home-primary/20 text-xs">
                                 {subject}
                               </Badge>
                             ))}

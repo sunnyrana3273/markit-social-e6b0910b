@@ -14,6 +14,7 @@ import {
   Target
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import heroImage from "@/assets/hero-education.jpg";
 
 const Index = () => {
   return (
@@ -31,6 +32,9 @@ const Index = () => {
           <nav className="hidden md:flex items-center gap-6">
             <Link to="/features" className="text-gray-600 hover:text-home-foreground transition-colors">
               Features
+            </Link>
+            <Link to="/communities" className="text-gray-600 hover:text-home-foreground transition-colors">
+              Communities
             </Link>
             <Link to="/pricing" className="text-gray-600 hover:text-home-foreground transition-colors">
               Pricing
@@ -53,16 +57,15 @@ const Index = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-home-primary/10 via-home-secondary/10 to-green-100/20" />
         
         <div className="container mx-auto px-4 relative">
-          <div className="flex justify-center">
-            <div className="max-w-4xl">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="animate-slide-up">
-              <Badge className="mb-4 bg-home-primary/10 text-home-primary border-home-primary/20 hover:bg-home-primary hover:text-white transition-colors duration-200 cursor-pointer">
+              <Badge className="mb-4 bg-home-primary/10 text-home-primary border-home-primary/20">
                 <Zap className="w-3 h-3 mr-1" />
                 AI-Powered Learning
               </Badge>
               
               <h1 className="text-3xl lg:text-4xl font-bold text-home-foreground mb-6 leading-tight font-lexend">
-                MarkIt | Learning but
+                MarkIt Learning but
                 <br />
                 <span className="text-gradient font-homemade">better</span>
               </h1>
@@ -102,6 +105,13 @@ const Index = () => {
                 </div>
               </div>
             </div>
+            <div className="relative animate-float">
+              <img 
+                src={heroImage} 
+                alt="Students collaborating on MarkIt platform"
+                className="rounded-2xl shadow-lg w-full"
+              />
+              <div className="absolute inset-0 bg-gradient-to-br from-home-primary/10 to-home-secondary/10 rounded-2xl" />
             </div>
           </div>
         </div>

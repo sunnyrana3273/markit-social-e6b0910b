@@ -9,9 +9,6 @@ import Dashboard from "./pages/Dashboard";
 import Communities from "./pages/Communities";
 import Friends from "./pages/Friends";
 import StudySession from "./pages/StudySession";
-import Features from "./pages/Features";
-import Pricing from "./pages/Pricing";
-import Upload from "./pages/Upload";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,13 +20,10 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/features" element={<Features />} />
-          <Route path="/communities" element={<Communities />} />
-          <Route path="/pricing" element={<Pricing />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/app" element={<Dashboard />} />
+          <Route path="/communities" element={<Communities />} />
           <Route path="/friends" element={<Friends />} />
-          <Route path="/upload" element={<Upload />} />
           <Route path="/session/:sessionId" element={<StudySession />} />
           <Route path="/session/new" element={<StudySession />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

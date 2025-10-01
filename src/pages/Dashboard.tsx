@@ -11,37 +11,11 @@ import {
   Trophy,
   Calendar,
   Settings,
-  Bell,
-  Upload
+  Bell
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
 
 const Dashboard = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log('User data:', user); // Debug log
-      console.log('User metadata:', user?.user_metadata); // Debug log
-      setUser(user);
-      setLoading(false);
-    };
-
-    getUser();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   // Mock data - will be replaced with real data from Supabase
   const recentSessions = [
     { id: 1, title: "AP Calculus Study Group", participants: 5, lastActive: "2 hours ago", course: "AP Calculus AB" },
@@ -60,44 +34,6 @@ const Dashboard = () => {
     problemsSolved: 15,
     sessionsJoined: 3
   };
-
-  // Get user's display name and avatar
-  const getUserDisplayName = () => {
-    if (!user) return "User";
-    return user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || "User";
-  };
-
-  const getUserAvatar = () => {
-    if (!user) return null;
-    // Try multiple possible avatar URL fields from Google OAuth
-    return user.user_metadata?.avatar_url || 
-           user.user_metadata?.picture || 
-           user.user_metadata?.avatar_urls?.google ||
-           null;
-  };
-
-  const getUserInitials = () => {
-    if (!user) return "U";
-    const name = getUserDisplayName();
-    const names = name.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-    }
-    return name[0]?.toUpperCase() || "U";
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-home-background font-lexend flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-5 h-5 text-white" />
-          </div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-home-background font-lexend">
@@ -132,22 +68,8 @@ const Dashboard = () => {
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Settings className="w-5 h-5" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center overflow-hidden">
-              {getUserAvatar() ? (
-                <img 
-                  src={getUserAvatar()} 
-                  alt={getUserDisplayName()}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    // Hide the image and show initials if it fails to load
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                  }}
-                />
-              ) : null}
-              <span className={`text-white text-sm font-medium ${getUserAvatar() ? 'hidden' : ''}`}>
-                {getUserInitials()}
-              </span>
+            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center">
+              <span className="text-white text-sm font-medium">JD</span>
             </div>
           </div>
         </div>
@@ -160,7 +82,7 @@ const Dashboard = () => {
             {/* Welcome Section */}
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-home-foreground">Welcome back, {getUserDisplayName()}!</h1>
+                <h1 className="text-3xl font-bold text-home-foreground">Welcome back, John!</h1>
                 <p className="text-gray-600">Ready to continue your learning journey?</p>
               </div>
               <Link to="/session/new">
@@ -240,7 +162,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-home-secondary/10 text-home-secondary border-home-secondary/20 hover:bg-home-secondary hover:text-white transition-colors duration-200 cursor-pointer">{session.course}</Badge>
+                      <Badge className="bg-home-secondary/10 text-home-secondary border-home-secondary/20">{session.course}</Badge>
                       <Button variant="outline" size="sm" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
                         Join
                       </Button>
@@ -275,7 +197,7 @@ const Dashboard = () => {
                 </Link>
                 <Link to="/upload">
                   <Button variant="outline" className="w-full h-20 flex-col border-gray-300 text-gray-600 hover:bg-gray-100">
-                    <Upload className="w-6 h-6 mb-2" />
+                    <Calendar className="w-6 h-6 mb-2" />
                     Upload Document
                   </Button>
                 </Link>

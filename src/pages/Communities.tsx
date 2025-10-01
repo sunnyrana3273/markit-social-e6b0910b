@@ -11,8 +11,10 @@ import {
   Settings
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useState } from "react";
 
 const Communities = () => {
+  const [searchQuery, setSearchQuery] = useState("");
   // AP Course Communities organized by subject
   const courseCategories = [
     {
@@ -37,8 +39,23 @@ const Communities = () => {
         { id: 13, name: "AP Physics C: Electricity and Magnetism" },
         { id: 14, name: "AP Physics C: Mechanics" }
       ]
+    },
+    {
+      category: "SAT Prep",
+      courses: [
+        { id: 15, name: "SAT Math" },
+        { id: 16, name: "SAT Reading and Writing" }
+      ]
     }
   ];
+
+  // Filter courses based on search query
+  const filteredCategories = courseCategories.map(category => ({
+    ...category,
+    courses: category.courses.filter(course =>
+      course.name.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  })).filter(category => category.courses.length > 0);
 
   
 
@@ -106,6 +123,8 @@ const Communities = () => {
                   <Input 
                     placeholder="Search communities..." 
                     className="pl-10 border-gray-200 focus:border-home-primary"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
                 <div className="flex gap-2">
@@ -124,7 +143,8 @@ const Communities = () => {
 
             {/* AP Courses Grid */}
             <div className="grid md:grid-cols-2 gap-8">
-              {courseCategories.map((category) => (
+              {filteredCategories.length > 0 ? (
+                filteredCategories.map((category) => (
                 <div key={category.category} className="space-y-4">
                   <h2 className="text-2xl font-bold text-home-foreground border-t-4 border-gray-900 pt-4">
                     {category.category}
@@ -142,7 +162,12 @@ const Communities = () => {
                     ))}
                   </div>
                 </div>
-              ))}
+              ))
+              ) : (
+                <div className="col-span-2 text-center py-12 text-gray-600">
+                  <p>No communities found matching "{searchQuery}"</p>
+                </div>
+              )}
             </div>
           </div>
 

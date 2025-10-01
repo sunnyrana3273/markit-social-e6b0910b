@@ -160,18 +160,6 @@ const Dashboard = () => {
     return date.toLocaleDateString();
   };
 
-  const friends = [
-    { id: 1, name: "Alex Chen", status: "online", avatar: "AC" },
-    { id: 2, name: "Sarah Kim", status: "studying", avatar: "SK" },
-    { id: 3, name: "Mike Johnson", status: "offline", avatar: "MJ" },
-  ];
-
-  const stats = {
-    streak: 7,
-    minutesStudied: 120,
-    problemsSolved: 15,
-    sessionsJoined: 3
-  };
 
   if (loading) {
     return (
@@ -228,9 +216,9 @@ const Dashboard = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-4 gap-6">
+        <div className="max-w-7xl mx-auto">
           {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="space-y-6">
             {/* Welcome Section */}
             <div className="flex items-center justify-between">
               <div>
@@ -245,48 +233,6 @@ const Dashboard = () => {
               </Link>
             </div>
 
-            {/* Stats Cards */}
-            <div className="grid md:grid-cols-4 gap-4">
-              <Card className="p-4 bg-home-primary text-white">
-                <div className="flex items-center gap-3">
-                  <Zap className="w-8 h-8" />
-                  <div>
-                    <p className="text-sm opacity-90">Current Streak</p>
-                    <p className="text-2xl font-bold">{stats.streak} days</p>
-                  </div>
-                </div>
-              </Card>
-              
-              <Card className="p-4 bg-home-secondary text-white">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-8 h-8" />
-                  <div>
-                    <p className="text-sm opacity-90">Minutes Today</p>
-                    <p className="text-2xl font-bold">{stats.minutesStudied}m</p>
-                  </div>
-                </div>
-              </Card>
-              
-              <Card className="p-4 bg-white border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <Trophy className="w-8 h-8 text-yellow-600" />
-                  <div>
-                    <p className="text-sm text-gray-600">Problems Solved</p>
-                    <p className="text-2xl font-bold text-home-foreground">{stats.problemsSolved}</p>
-                  </div>
-                </div>
-              </Card>
-              
-              <Card className="p-4 bg-white border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <Users className="w-8 h-8 text-home-secondary" />
-                  <div>
-                    <p className="text-sm text-gray-600">Sessions Joined</p>
-                    <p className="text-2xl font-bold text-home-foreground">{stats.sessionsJoined}</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
 
             {/* Recent Studying Sessions */}
             <Card className="p-6 bg-white border border-gray-200">
@@ -351,50 +297,6 @@ const Dashboard = () => {
                     Upload Document
                   </Button>
                 </Link>
-              </div>
-            </Card>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Friends Online */}
-            <Card className="p-6 bg-white border border-gray-200">
-              <h3 className="font-semibold text-home-foreground mb-4">Friends</h3>
-              <div className="space-y-3">
-                {friends.map((friend) => (
-                  <div key={friend.id} className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-8 h-8 rounded-full bg-home-secondary flex items-center justify-center">
-                        <span className="text-xs font-medium text-white">{friend.avatar}</span>
-                      </div>
-                      <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${
-                        friend.status === 'online' ? 'bg-green-500' : 
-                        friend.status === 'studying' ? 'bg-yellow-500' : 'bg-gray-400'
-                      }`} />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-home-foreground">{friend.name}</p>
-                      <p className="text-xs text-gray-600 capitalize">{friend.status}</p>
-                    </div>
-                    <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
-                      <MessageSquare className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-              <Link to="/friends">
-                <Button variant="outline" className="w-full mt-4 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                  View All Friends
-                </Button>
-              </Link>
-            </Card>
-
-            {/* Achievement Card */}
-            <Card className="p-6 bg-home-primary text-white">
-              <div className="text-center">
-                <Trophy className="w-12 h-12 mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Week Warrior!</h3>
-                <p className="text-sm opacity-90">You've maintained your study streak for 7 days straight!</p>
               </div>
             </Card>
           </div>

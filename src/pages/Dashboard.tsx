@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   BookOpen, 
   Users, 
@@ -13,9 +14,95 @@ import {
   Settings,
   Bell
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
+
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+}
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check authentication and fetch profile
+    const initializeUser = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          navigate('/auth');
+          return;
+        }
+
+        setUser(session.user);
+
+        // Fetch user profile
+        const { data: profileData, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', session.user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching profile:', error);
+        } else {
+          setProfile(profileData);
+        }
+      } catch (error) {
+        console.error('Error initializing user:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        navigate('/auth');
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  // Get user's display name
+  const getDisplayName = () => {
+    if (profile?.first_name) {
+      return profile.first_name;
+    }
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name.split(' ')[0];
+    }
+    return 'there';
+  };
+
+  // Get user's initials for avatar fallback
+  const getInitials = () => {
+    if (profile?.first_name && profile?.last_name) {
+      return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
+    }
+    if (profile?.first_name) {
+      return profile.first_name[0].toUpperCase();
+    }
+    if (user?.email) {
+      return user.email[0].toUpperCase();
+    }
+    return 'U';
+  };
+
   // Mock data - will be replaced with real data from Supabase
   const recentSessions = [
     { id: 1, title: "AP Calculus Study Group", participants: 5, lastActive: "2 hours ago", course: "AP Calculus AB" },
@@ -34,6 +121,17 @@ const Dashboard = () => {
     problemsSolved: 15,
     sessionsJoined: 3
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-home-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-home-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-home-background font-lexend">
@@ -68,9 +166,12 @@ const Dashboard = () => {
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Settings className="w-5 h-5" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-home-primary flex items-center justify-center">
-              <span className="text-white text-sm font-medium">JD</span>
-            </div>
+            <Avatar className="w-8 h-8">
+              <AvatarImage src={profile?.image_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture} alt={getDisplayName()} />
+              <AvatarFallback className="bg-home-primary text-white text-sm font-medium">
+                {getInitials()}
+              </AvatarFallback>
+            </Avatar>
           </div>
         </div>
       </header>
@@ -82,7 +183,7 @@ const Dashboard = () => {
             {/* Welcome Section */}
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-3xl font-bold text-home-foreground">Welcome back, John!</h1>
+                <h1 className="text-3xl font-bold text-home-foreground">Welcome back, {getDisplayName()}!</h1>
                 <p className="text-gray-600">Ready to continue your learning journey?</p>
               </div>
               <Link to="/session/new">

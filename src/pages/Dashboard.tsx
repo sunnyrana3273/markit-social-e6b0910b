@@ -237,10 +237,10 @@ const Dashboard = () => {
                 <h1 className="text-3xl font-bold text-home-foreground">Welcome back, {getDisplayName()}!</h1>
                 <p className="text-gray-600">Ready to continue your learning journey?</p>
               </div>
-              <Link to="/session/new">
+              <Link to="/upload">
                 <Button className="group bg-home-primary hover:bg-home-primary-hover text-white">
                   <Plus className="w-5 h-5 mr-2" />
-                  New Session
+                  Upload New File
                 </Button>
               </Link>
             </div>

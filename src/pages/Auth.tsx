@@ -1,17 +1,13 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { BookOpen, ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 const Auth = () => {
-  const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -36,63 +32,6 @@ const Auth = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
-
-  const handleEmailAuth = async (event: React.FormEvent<HTMLFormElement>, type: 'login' | 'signup') => {
-    event.preventDefault();
-    setIsLoading(true);
-
-    const formData = new FormData(event.currentTarget);
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-
-    try {
-      if (type === 'signup') {
-        const firstName = formData.get('firstName') as string;
-        const lastName = formData.get('lastName') as string;
-        const username = formData.get('username') as string;
-
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              first_name: firstName,
-              last_name: lastName,
-              username: username,
-            }
-          }
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Check your email",
-          description: "We've sent you a confirmation link to complete your signup.",
-        });
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully signed in.",
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Authentication Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleGoogleAuth = async () => {
     setIsGoogleLoading(true);
@@ -164,54 +103,6 @@ const Auth = () => {
                 </svg>
                 {isGoogleLoading ? "Connecting..." : "Continue with Google"}
               </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
-                </div>
-              </div>
-
-              <form className="space-y-4" onSubmit={(e) => handleEmailAuth(e, 'login')}>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input 
-                    id="email" 
-                    name="email"
-                    type="email" 
-                    placeholder="Enter your email"
-                    className="bg-surface border-border"
-                    required 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input 
-                    id="password" 
-                    name="password"
-                    type="password" 
-                    placeholder="Enter your password"
-                    className="bg-surface border-border"
-                    required 
-                  />
-                </div>
-                <Button 
-                  type="submit" 
-                  variant="hero" 
-                  className="w-full" 
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Signing In..." : "Sign In"}
-                </Button>
-              </form>
-
-              <div className="text-center text-sm">
-                <Link to="/forgot-password" className="text-primary hover:underline">
-                  Forgot your password?
-                </Link>
-              </div>
             </TabsContent>
 
             <TabsContent value="signup" className="space-y-6">
@@ -235,80 +126,6 @@ const Auth = () => {
                 </svg>
                 {isGoogleLoading ? "Connecting..." : "Continue with Google"}
               </Button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">Or create account with email</span>
-                </div>
-              </div>
-
-              <form className="space-y-4" onSubmit={(e) => handleEmailAuth(e, 'signup')}>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input 
-                      id="firstName" 
-                      name="firstName"
-                      placeholder="John"
-                      className="bg-surface border-border"
-                      required 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input 
-                      id="lastName" 
-                      name="lastName"
-                      placeholder="Doe"
-                      className="bg-surface border-border"
-                      required 
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input 
-                    id="username" 
-                    name="username"
-                    placeholder="johndoe"
-                    className="bg-surface border-border"
-                    required 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signupEmail">Email</Label>
-                  <Input 
-                    id="signupEmail" 
-                    name="email"
-                    type="email" 
-                    placeholder="john@example.com"
-                    className="bg-surface border-border"
-                    required 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signupPassword">Password</Label>
-                  <Input 
-                    id="signupPassword" 
-                    name="password"
-                    type="password" 
-                    placeholder="Create a strong password"
-                    className="bg-surface border-border"
-                    required 
-                  />
-                </div>
-                <Button 
-                  type="submit" 
-                  variant="hero" 
-                  className="w-full" 
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Creating Account..." : "Create Account"}
-                </Button>
-              </form>
 
               <div className="text-center text-sm text-muted-foreground">
                 By signing up, you agree to our{" "}

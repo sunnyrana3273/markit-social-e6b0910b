@@ -140,27 +140,9 @@ All colors MUST be HSL for proper theming.
   }
 
   /* Animations */
-  @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-10px); }
-  }
-  
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: var(--glow-primary); }
-    50% { box-shadow: 0 0 30px hsl(var(--primary) / 0.5); }
-  }
-  
   @keyframes slide-up {
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0px); opacity: 1; }
-  }
-  
-  .animate-float {
-    animation: float 3s ease-in-out infinite;
-  }
-  
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
   }
   
   .animate-slide-up {

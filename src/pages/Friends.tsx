@@ -224,23 +224,13 @@ const Friends = () => {
             {/* Study Groups */}
             <Card className="p-6 bg-white border border-gray-200">
               <h3 className="font-semibold text-home-foreground mb-4">Active Study Groups</h3>
-              <div className="space-y-3">
-                {[
-                  { name: "Calculus Squad", members: 4, active: true },
-                  { name: "Physics Partners", members: 3, active: false },
-                  { name: "SAT Prep Team", members: 6, active: true }
-                ].map((group, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-home-surface rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-home-foreground">{group.name}</p>
-                      <p className="text-xs text-gray-600">{group.members} members</p>
-                    </div>
-                    <div className={`w-2 h-2 rounded-full ${group.active ? 'bg-green-500' : 'bg-gray-400'}`} />
-                  </div>
-                ))}
+              <div className="text-center py-8 text-gray-600">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm mb-2">No study groups yet</p>
+                <p className="text-xs">Create or join a study group to collaborate!</p>
               </div>
               <Button variant="outline" className="w-full mt-4 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                View All Groups
+                Create Study Group
               </Button>
             </Card>
 

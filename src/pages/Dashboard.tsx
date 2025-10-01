@@ -233,6 +233,60 @@ const Dashboard = () => {
               </Link>
             </div>
 
+            {/* Stats Cards with Liquid Glass Effect */}
+            <div className="grid md:grid-cols-4 gap-4">
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-primary/10 via-white/50 to-home-primary/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+                <div className="absolute inset-0 bg-gradient-to-br from-home-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-home-primary/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Zap className="w-6 h-6 text-home-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 font-medium">Current Streak</p>
+                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                  </div>
+                </div>
+              </Card>
+              
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-secondary/10 via-white/50 to-home-secondary/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+                <div className="absolute inset-0 bg-gradient-to-br from-home-secondary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-home-secondary/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Clock className="w-6 h-6 text-home-secondary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 font-medium">Minutes Today</p>
+                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                  </div>
+                </div>
+              </Card>
+              
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-yellow-500/10 via-white/50 to-yellow-500/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+                <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-yellow-500/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Trophy className="w-6 h-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 font-medium">Problems Solved</p>
+                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                  </div>
+                </div>
+              </Card>
+              
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-purple-500/10 via-white/50 to-purple-500/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative z-10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-purple-500/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Users className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 font-medium">Sessions Joined</p>
+                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
 
             {/* Recent Studying Sessions */}
             <Card className="p-6 bg-white border border-gray-200">

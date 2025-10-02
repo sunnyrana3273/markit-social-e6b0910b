@@ -574,7 +574,7 @@ const Friends = () => {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleAcceptRequest(request.user_id, request.profiles?.id);
+                                handleAcceptRequest(request.user_id, user?.id!);
                               }}
                               className="h-6 w-6 p-0 bg-green-500 hover:bg-green-600"
                             >
@@ -584,7 +584,7 @@ const Friends = () => {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeclineRequest(request.user_id, request.profiles?.id);
+                                handleDeclineRequest(request.user_id, user?.id!);
                               }}
                               className="h-6 w-6 p-0 bg-red-500 hover:bg-red-600"
                             >
@@ -978,7 +978,7 @@ const Friends = () => {
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
-                                  onClick={() => handleAcceptRequest(request.user_id, request.profiles?.id)}
+                                  onClick={() => handleAcceptRequest(request.user_id, user?.id!)}
                                   className="bg-green-500 hover:bg-green-600 text-white h-8 px-3"
                                 >
                                   <CheckCircle className="w-3 h-3 mr-1" />
@@ -987,7 +987,7 @@ const Friends = () => {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleDeclineRequest(request.user_id, request.profiles?.id)}
+                                  onClick={() => handleDeclineRequest(request.user_id, user?.id!)}
                                   className="border-gray-300 text-gray-600 hover:bg-gray-100 h-8 px-3"
                                 >
                                   <XCircle className="w-3 h-3 mr-1" />

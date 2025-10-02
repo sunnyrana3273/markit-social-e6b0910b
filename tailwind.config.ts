@@ -17,6 +17,12 @@ export default {
         'homemade': ['Homemade Apple', 'cursive'],
         'lexend': ['Lexend Deca', 'sans-serif'],
       },
+      scale: {
+        '102': '1.02',
+        '105': '1.05',
+        '108': '1.08',
+        '110': '1.10',
+      },
       colors: {
         // Home page specific colors
         'home-background': 'hsl(var(--home-background))',

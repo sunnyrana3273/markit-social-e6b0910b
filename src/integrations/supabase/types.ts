@@ -1064,6 +1064,57 @@ export type Database = {
         }
         Relationships: []
       }
+      user_stats: {
+        Row: {
+          created_at: string
+          current_streak: number
+          favorite_community_id: string | null
+          last_study_date: string | null
+          lifetime_minutes_studied: number
+          lifetime_questions_answered: number
+          longest_streak: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          favorite_community_id?: string | null
+          last_study_date?: string | null
+          lifetime_minutes_studied?: number
+          lifetime_questions_answered?: number
+          longest_streak?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          favorite_community_id?: string | null
+          last_study_date?: string | null
+          lifetime_minutes_studied?: number
+          lifetime_questions_answered?: number
+          longest_streak?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_stats_favorite_community_id_fkey"
+            columns: ["favorite_community_id"]
+            isOneToOne: false
+            referencedRelation: "course_communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_stats_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       whiteboard_events: {
         Row: {
           delta_json: Json

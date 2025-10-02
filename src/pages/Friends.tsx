@@ -22,7 +22,8 @@ import {
   Bell,
   Clock,
   Trophy,
-  Zap
+  Zap,
+  BookUp
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -30,6 +31,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import SettingsModal from "@/components/SettingsModal";
 
 interface Profile {
   first_name: string | null;
@@ -81,6 +83,7 @@ const Friends = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -93,13 +96,34 @@ const Friends = () => {
 
       setUser(session.user);
 
-      const { data: profileData } = await supabase
+      const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('clerk_user_id', session.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileData) {
+      if (!profileData && !error) {
+        // No profile exists, create one
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            clerk_user_id: session.user.id,
+            email: session.user.email!,
+            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            last_name: session.user.user_metadata?.last_name || '',
+            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+          });
+
+        if (!createError) {
+          // Fetch the newly created profile
+          const { data: newProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', session.user.id)
+          .single();
+        setProfile(newProfile);
+        }
+      } else if (profileData) {
         setProfile(profileData);
       }
 
@@ -310,11 +334,11 @@ const Friends = () => {
       <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
+            <Link to="/" className="flex items-center gap-1">
+              <div className="w-8 h-8 flex items-center justify-center">
+                <BookUp className="w-5 h-5 text-home-primary " />
               </div>
-              <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
+              <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
             </Link>
             
             <nav className="hidden md:flex items-center gap-4">
@@ -334,7 +358,12 @@ const Friends = () => {
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Bell className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="text-home-foreground hover:bg-home-surface"
+              onClick={() => setIsSettingsOpen(true)}
+            >
               <Settings className="w-5 h-5" />
             </Button>
             <Avatar className="w-8 h-8">
@@ -710,6 +739,11 @@ const Friends = () => {
           </div>
         </div>
       </div>
+
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </div>
   );
 };

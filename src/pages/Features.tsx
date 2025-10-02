@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
-  BookOpen, 
   Sparkles, 
   Users, 
   MessageSquare, 
@@ -15,7 +14,8 @@ import {
   Globe,
   TrendingUp,
   CheckCircle2,
-  ChevronRight
+  ChevronRight,
+  BookUp
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -25,10 +25,10 @@ const Features = () => {
       {/* Header */}
       <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
+          <Link to="/" className="flex items-center gap-1">
+              <div className="w-8 h-8 flex items-center justify-center">
+                <BookUp className="w-5 h-5 text-home-primary " />
+              </div>
             <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
           </Link>
           
@@ -200,7 +200,7 @@ const Features = () => {
                 description: "Get real-time feedback on your work. AI checks your solutions and provides guidance to help you learn faster.",
               },
               {
-                icon: BookOpen,
+                icon: Target,
                 title: "Resource Library",
                 description: "Access a curated library of study materials, practice problems, and educational resources across all subjects.",
               }
@@ -254,9 +254,9 @@ const Features = () => {
       <footer className="border-t border-gray-200 bg-white py-12">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center">
-            <Link to="/" className="flex items-center gap-2 mb-4 md:mb-0">
-              <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
+            <Link to="/" className="flex items-center gap-1 mb-4 md:mb-0">
+              <div className="w-8 h-8 flex items-center justify-center">
+                <BookUp className="w-5 h-5 text-home-primary " />
               </div>
               <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
             </Link>
@@ -269,7 +269,7 @@ const Features = () => {
           </div>
           
           <div className="border-t border-gray-200 mt-8 pt-8 text-center text-sm text-gray-600">
-            © 2024 MarkIt. Building the future of collaborative learning.
+            © 2025 MarkIt. Building the future of collaborative learning.
           </div>
         </div>
       </footer>

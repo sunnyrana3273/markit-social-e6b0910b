@@ -1,0 +1,264 @@
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { User, Mail, Calendar, LogOut } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
+
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+interface UserProfile {
+  id: string;
+  clerk_user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  image_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchUserData();
+    }
+  }, [isOpen]);
+
+  const fetchUserData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Get current user session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      setUser(session.user);
+
+      // Get user profile
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('clerk_user_id', session.user.id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching profile:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load profile information",
+          variant: "destructive",
+        });
+      } else if (!profileData) {
+        // No profile exists, create one
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            clerk_user_id: session.user.id,
+            email: session.user.email!,
+            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            last_name: session.user.user_metadata?.last_name || '',
+            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+          });
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          toast({
+            title: "Error",
+            description: "Failed to create profile",
+            variant: "destructive",
+          });
+        } else {
+          // Fetch the newly created profile
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('clerk_user_id', session.user.id)
+            .single();
+          setProfile(newProfile);
+        }
+      } else {
+        setProfile(profileData);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load user information",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate('/auth');
+      onClose();
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast({
+        title: "Error",
+        description: "Failed to sign out",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getDisplayName = () => {
+    if (profile?.first_name && profile?.last_name) {
+      return `${profile.first_name} ${profile.last_name}`;
+    }
+    if (profile?.first_name) {
+      return profile.first_name;
+    }
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name;
+    }
+    return user?.email?.split('@')[0] || 'User';
+  };
+
+  const getInitials = () => {
+    const name = getDisplayName();
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <User className="w-5 h-5" />
+            Account Settings
+          </DialogTitle>
+          <DialogDescription>
+            Manage your account information and preferences
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Profile Section */}
+            <div className="flex items-center space-x-4">
+              <Avatar className="w-16 h-16">
+                <AvatarImage 
+                  src={profile?.image_url || user?.user_metadata?.avatar_url || user?.user_metadata?.picture} 
+                  alt={getDisplayName()} 
+                />
+                <AvatarFallback className="bg-primary text-primary-foreground text-lg font-medium">
+                  {getInitials()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold">{getDisplayName()}</h3>
+                {profile?.username && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">
+                      @{profile.username}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Account Information */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-medium text-muted-foreground">Account Information</h4>
+              
+              <div className="space-y-3">
+                {profile?.username && (
+                  <div className="flex items-center gap-3">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Username</p>
+                      <p className="text-sm text-muted-foreground">@{profile.username}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <Mail className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Email</p>
+                    <p className="text-sm text-muted-foreground">{user?.email}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Member since</p>
+                    <p className="text-sm text-muted-foreground">
+                      {profile?.created_at ? formatDate(profile.created_at) : 'Unknown'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Actions */}
+            <div className="space-y-3">
+              <Button 
+                variant="outline" 
+                className="w-full justify-start"
+                onClick={handleSignOut}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default SettingsModal;

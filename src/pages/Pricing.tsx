@@ -2,11 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
-  BookOpen, 
   ChevronRight,
   Check,
   X,
-  Sparkles
+  Sparkles,
+  BookUp
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -25,8 +25,6 @@ const Pricing = () => {
     { name: "Priority Support", free: false, plus: true, pro: true },
     { name: "24/7 Support", free: false, plus: false, pro: true },
     { name: "Export Options", free: "Basic", plus: "Advanced", pro: "All Formats" },
-    { name: "API Access", free: false, plus: false, pro: true },
-    { name: "Team Management", free: false, plus: false, pro: true },
   ];
 
   return (
@@ -35,9 +33,9 @@ const Pricing = () => {
       <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
+              <div className="w-8 h-8 flex items-center justify-center">
+                <BookUp className="w-5 h-5 text-home-primary" />
+              </div>
             <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
           </Link>
           
@@ -192,7 +190,7 @@ const Pricing = () => {
                   <span className="text-5xl font-bold text-home-foreground">$15</span>
                   <span className="text-gray-600">/month</span>
                 </div>
-                <p className="text-gray-600">For power users & teams</p>
+                <p className="text-gray-600">For power users</p>
               </div>
               
               <Link to="/auth">
@@ -234,10 +232,7 @@ const Pricing = () => {
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
                   <span className="text-sm text-gray-600">24/7 priority support</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">API access</span>
-                </div>
+                
               </div>
             </Card>
           </div>
@@ -375,8 +370,8 @@ const Pricing = () => {
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <Link to="/" className="flex items-center gap-2 mb-4 md:mb-0">
-              <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 flex items-center justify-center">
+                <BookUp className="w-5 h-5 text-home-primary" />
               </div>
               <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
             </Link>
@@ -389,7 +384,7 @@ const Pricing = () => {
           </div>
           
           <div className="border-t border-gray-200 mt-8 pt-8 text-center text-sm text-gray-600">
-            © 2024 MarkIt. Building the future of collaborative learning.
+            © 2025 MarkIt. Building the future of collaborative learning.
           </div>
         </div>
       </footer>

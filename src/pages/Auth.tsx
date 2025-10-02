@@ -13,20 +13,42 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if user is already logged in
+    // Check if user is already logged in and if they need onboarding
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate('/app');
+        // Check if user has completed onboarding (has username)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('clerk_user_id', session.user.id)
+          .single();
+
+        if (!profile?.username) {
+          navigate('/onboarding');
+        } else {
+          navigate('/app');
+        }
       }
     };
     
     checkAuth();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        navigate('/app');
+        // Check if user needs onboarding
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('clerk_user_id', session.user.id)
+          .single();
+
+        if (!profile?.username) {
+          navigate('/onboarding');
+        } else {
+          navigate('/app');
+        }
       }
     });
 
@@ -109,10 +131,13 @@ const Auth = () => {
               <div className="text-center">
                 <h2 className="text-2xl font-bold text-foreground">Create account</h2>
                 <p className="text-muted-foreground">Join thousands of students learning together</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Consider using your school email to find communities easier
+                </p>
               </div>
 
               {/* Google Sign Up */}
-              <Button 
+              <Button
                 onClick={handleGoogleAuth}
                 variant="outline" 
                 className="w-full" 

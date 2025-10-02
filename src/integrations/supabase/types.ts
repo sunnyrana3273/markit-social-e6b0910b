@@ -637,6 +637,7 @@ export type Database = {
           image_url: string | null
           last_name: string | null
           updated_at: string
+          username: string | null
         }
         Insert: {
           clerk_user_id: string
@@ -647,6 +648,7 @@ export type Database = {
           image_url?: string | null
           last_name?: string | null
           updated_at?: string
+          username?: string | null
         }
         Update: {
           clerk_user_id?: string
@@ -657,6 +659,7 @@ export type Database = {
           image_url?: string | null
           last_name?: string | null
           updated_at?: string
+          username?: string | null
         }
         Relationships: []
       }

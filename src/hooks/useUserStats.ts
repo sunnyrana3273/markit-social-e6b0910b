@@ -30,7 +30,7 @@ export const useUserStats = () => {
       const { data: profile } = await supabase
         .from('profiles')
         .select('id')
-        .eq('clerk_user_id', user.id)
+        .eq('id', user.id)
         .single();
 
       if (!profile) return;

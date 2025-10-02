@@ -64,7 +64,6 @@ const usernameSchema = z.string()
 
 interface SearchedUser {
   id: string;
-  clerk_user_id: string;
   username: string;
   first_name: string | null;
   last_name: string | null;
@@ -99,7 +98,7 @@ const Friends = () => {
       const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('clerk_user_id', session.user.id)
+        .eq('id', session.user.id)
         .maybeSingle();
 
       if (!profileData && !error) {
@@ -107,7 +106,7 @@ const Friends = () => {
         const { error: createError } = await supabase
           .from('profiles')
           .insert({
-            clerk_user_id: session.user.id,
+            id: session.user.id,
             email: session.user.email!,
             first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             last_name: session.user.user_metadata?.last_name || '',
@@ -119,7 +118,7 @@ const Friends = () => {
           const { data: newProfile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('clerk_user_id', session.user.id)
+          .eq('id', session.user.id)
           .single();
         setProfile(newProfile);
         }
@@ -140,8 +139,8 @@ const Friends = () => {
         // Fetch profiles for all friends
         const { data: profilesData } = await supabase
           .from('profiles')
-          .select('id, clerk_user_id, first_name, last_name, image_url, email')
-          .in('clerk_user_id', friendIds);
+          .select('id, first_name, last_name, image_url, email')
+          .in('id', friendIds);
 
         if (profilesData) {
           // Fetch metrics for each friend
@@ -155,7 +154,7 @@ const Friends = () => {
                 .limit(7); // Last 7 days
 
               return {
-                friend_id: profile.clerk_user_id,
+                friend_id: profile.id,
                 profiles: profile,
                 daily_metrics: metricsData || []
               };
@@ -247,7 +246,7 @@ const Friends = () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, clerk_user_id, username, first_name, last_name, image_url, email')
+        .select('id, username, first_name, last_name, image_url, email')
         .eq('username', searchUsername.trim())
         .maybeSingle();
 
@@ -256,7 +255,7 @@ const Friends = () => {
       if (!data) {
         setSearchError("User not found");
         setSearchedUser(null);
-      } else if (data.clerk_user_id === user?.id) {
+      } else if (data.id === user?.id) {
         setSearchError("You cannot add yourself as a friend");
         setSearchedUser(null);
       } else {
@@ -264,7 +263,7 @@ const Friends = () => {
         const { data: existingFriend } = await supabase
           .from('friends')
           .select('status')
-          .or(`and(user_id.eq.${user?.id},friend_id.eq.${data.clerk_user_id}),and(user_id.eq.${data.clerk_user_id},friend_id.eq.${user?.id})`)
+          .or(`and(user_id.eq.${user?.id},friend_id.eq.${data.id}),and(user_id.eq.${data.id},friend_id.eq.${user?.id})`)
           .maybeSingle();
 
         if (existingFriend) {
@@ -295,7 +294,7 @@ const Friends = () => {
         .from('friends')
         .insert({
           user_id: user.id,
-          friend_id: searchedUser.clerk_user_id,
+          friend_id: searchedUser.id,
           status: 'pending'
         });
 

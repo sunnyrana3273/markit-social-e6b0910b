@@ -24,7 +24,6 @@ interface SettingsModalProps {
 
 interface UserProfile {
   id: string;
-  clerk_user_id: string;
   email: string;
   first_name: string | null;
   last_name: string | null;
@@ -65,7 +64,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
       const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('clerk_user_id', session.user.id)
+        .eq('id', session.user.id)
         .maybeSingle();
 
       if (error) {
@@ -80,7 +79,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
         const { error: createError } = await supabase
           .from('profiles')
           .insert({
-            clerk_user_id: session.user.id,
+            id: session.user.id,
             email: session.user.email!,
             first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             last_name: session.user.user_metadata?.last_name || '',
@@ -99,7 +98,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
           const { data: newProfile } = await supabase
             .from('profiles')
             .select('*')
-            .eq('clerk_user_id', session.user.id)
+            .eq('id', session.user.id)
             .single();
           setProfile(newProfile);
         }

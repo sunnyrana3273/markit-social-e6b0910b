@@ -43,7 +43,7 @@ const Onboarding = () => {
       const { data: profile } = await supabase
         .from('profiles')
         .select('username')
-        .eq('clerk_user_id', session.user.id)
+        .eq('id', session.user.id)
         .single();
 
       if (profile?.username) {
@@ -122,7 +122,7 @@ const Onboarding = () => {
       const { error } = await supabase
         .from('profiles')
         .update({ username })
-        .eq('clerk_user_id', userId);
+        .eq('id', userId);
 
       if (error) throw error;
 

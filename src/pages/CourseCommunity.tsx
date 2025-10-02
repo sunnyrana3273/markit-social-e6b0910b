@@ -97,7 +97,7 @@ const CourseCommunity = () => {
       const { data: profileData, error } = await supabase
         .from('profiles')
         .select('*')
-        .eq('clerk_user_id', session.user.id)
+        .eq('id', session.user.id)
         .maybeSingle();
 
       if (!profileData && !error) {
@@ -105,7 +105,7 @@ const CourseCommunity = () => {
         const { error: createError } = await supabase
           .from('profiles')
           .insert({
-            clerk_user_id: session.user.id,
+            id: session.user.id,
             email: session.user.email!,
             first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
             last_name: session.user.user_metadata?.last_name || '',
@@ -117,7 +117,7 @@ const CourseCommunity = () => {
           const { data: newProfile } = await supabase
             .from('profiles')
             .select('*')
-            .eq('clerk_user_id', session.user.id)
+            .eq('id', session.user.id)
             .single();
           setProfile(newProfile);
         }

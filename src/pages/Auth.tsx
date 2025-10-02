@@ -21,7 +21,7 @@ const Auth = () => {
         const { data: profile } = await supabase
           .from('profiles')
           .select('username')
-          .eq('clerk_user_id', session.user.id)
+          .eq('id', session.user.id)
           .maybeSingle();
 
         if (!profile?.username) {
@@ -41,7 +41,7 @@ const Auth = () => {
         const { data: profile } = await supabase
           .from('profiles')
           .select('username')
-          .eq('clerk_user_id', session.user.id)
+          .eq('id', session.user.id)
           .maybeSingle();
 
         if (!profile?.username) {

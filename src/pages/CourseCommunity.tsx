@@ -231,6 +231,31 @@ const CourseCommunity = () => {
     }
   };
 
+  const handleLeaveCommunity = async () => {
+    if (!user || !communityId) return;
+
+    const { error } = await supabase
+      .from('community_memberships')
+      .delete()
+      .eq('community_id', communityId)
+      .eq('user_id', user.id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to leave community",
+        variant: "destructive"
+      });
+    } else {
+      setIsMember(false);
+      toast({
+        title: "Success",
+        description: "Left community successfully"
+      });
+      navigate('/communities');
+    }
+  };
+
   const handleCreateDiscussion = async () => {
     if (!user || !communityId || !newDiscussionTitle || !newDiscussionContent) return;
 
@@ -384,9 +409,13 @@ const CourseCommunity = () => {
                   <Badge className="mt-2">{community.course_category}</Badge>
                 </div>
               </div>
-              {!isMember && (
+              {!isMember ? (
                 <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
                   Join Community
+                </Button>
+              ) : (
+                <Button onClick={handleLeaveCommunity} variant="outline" className="border-red-500 text-red-600 hover:bg-red-50">
+                  Leave Community
                 </Button>
               )}
             </div>

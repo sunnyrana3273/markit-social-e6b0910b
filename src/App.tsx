@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Communities from "./pages/Communities";
+import CourseCommunity from "./pages/CourseCommunity";
 import Friends from "./pages/Friends";
 import StudySession from "./pages/StudySession";
 import Features from "./pages/Features";
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/app" element={<Dashboard />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/communities" element={<Communities />} />
+          <Route path="/community/:communityId" element={<CourseCommunity />} />
           <Route path="/friends" element={<Friends />} />
           <Route path="/session/:sessionId" element={<StudySession />} />
           <Route path="/session/new" element={<StudySession />} />

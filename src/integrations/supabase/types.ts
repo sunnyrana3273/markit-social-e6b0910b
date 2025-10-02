@@ -182,6 +182,140 @@ export type Database = {
           },
         ]
       }
+      community_discussions: {
+        Row: {
+          community_id: string
+          content: string
+          created_at: string | null
+          id: string
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          community_id: string
+          content: string
+          created_at?: string | null
+          id?: string
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          community_id?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_discussions_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "course_communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_memberships: {
+        Row: {
+          community_id: string
+          id: string
+          joined_at: string | null
+          user_id: string
+        }
+        Insert: {
+          community_id: string
+          id?: string
+          joined_at?: string | null
+          user_id: string
+        }
+        Update: {
+          community_id?: string
+          id?: string
+          joined_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_memberships_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "course_communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_presence: {
+        Row: {
+          community_id: string
+          last_seen: string | null
+          user_id: string
+        }
+        Insert: {
+          community_id: string
+          last_seen?: string | null
+          user_id: string
+        }
+        Update: {
+          community_id?: string
+          last_seen?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_presence_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "course_communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_resources: {
+        Row: {
+          community_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          resource_type: string | null
+          resource_url: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          community_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          resource_type?: string | null
+          resource_url?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          community_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          resource_type?: string | null
+          resource_url?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_resources_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "course_communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_metrics: {
         Row: {
           assistant_messages: number | null
@@ -238,6 +372,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      course_communities: {
+        Row: {
+          course_category: string
+          course_name: string
+          created_at: string | null
+          description: string | null
+          id: string
+        }
+        Insert: {
+          course_category: string
+          course_name: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+        }
+        Update: {
+          course_category?: string
+          course_name?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+        }
+        Relationships: []
       }
       daily_metrics: {
         Row: {

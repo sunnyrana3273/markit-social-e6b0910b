@@ -54,6 +54,23 @@ const Communities = () => {
     initializeUser();
   }, [navigate]);
 
+  const [communities, setCommunities] = useState<Array<{id: string, course_name: string, course_category: string}>>([]);
+
+  useEffect(() => {
+    const fetchCommunities = async () => {
+      const { data } = await supabase
+        .from('course_communities')
+        .select('id, course_name, course_category')
+        .order('course_category', { ascending: true });
+      
+      if (data) {
+        setCommunities(data);
+      }
+    };
+
+    fetchCommunities();
+  }, []);
+
   const getInitials = () => {
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
@@ -66,39 +83,20 @@ const Communities = () => {
     }
     return 'U';
   };
-  // AP Course Communities organized by subject
-  const courseCategories = [
-    {
-      category: "Math and Computer Science",
-      courses: [
-        { id: 1, name: "AP Calculus AB" },
-        { id: 2, name: "AP Calculus BC" },
-        { id: 4, name: "AP Computer Science A" },
-        { id: 5, name: "AP Computer Science Principles" },
-        { id: 6, name: "AP Precalculus" },
-        { id: 7, name: "AP Statistics" }
-      ]
-    },
-    {
-      category: "Sciences",
-      courses: [
-        { id: 8, name: "AP Biology" },
-        { id: 9, name: "AP Chemistry" },
-        { id: 10, name: "AP Environmental Science" },
-        { id: 11, name: "AP Physics 1: Algebra-Based" },
-        { id: 12, name: "AP Physics 2: Algebra-Based" },
-        { id: 13, name: "AP Physics C: Electricity and Magnetism" },
-        { id: 14, name: "AP Physics C: Mechanics" }
-      ]
-    },
-    {
-      category: "SAT Prep",
-      courses: [
-        { id: 15, name: "SAT Math" },
-        { id: 16, name: "SAT Reading and Writing" }
-      ]
+
+  // Group communities by category
+  const courseCategories = communities.reduce((acc, community) => {
+    const existing = acc.find(cat => cat.category === community.course_category);
+    if (existing) {
+      existing.courses.push({ id: community.id, name: community.course_name });
+    } else {
+      acc.push({
+        category: community.course_category,
+        courses: [{ id: community.id, name: community.course_name }]
+      });
     }
-  ];
+    return acc;
+  }, [] as Array<{category: string, courses: Array<{id: string, name: string}>}>);
 
   // Filter courses based on search query
   const filteredCategories = courseCategories.map(category => ({
@@ -207,7 +205,7 @@ const Communities = () => {
                     {category.courses.map((course) => (
                       <Link 
                         key={course.id}
-                        to={`/course/${course.id}`}
+                        to={`/community/${course.id}`}
                         className="flex items-center justify-between p-4 bg-white border-b border-gray-200 hover:bg-gray-50 transition-colors group"
                       >
                         <span className="text-home-foreground font-medium">{course.name}</span>

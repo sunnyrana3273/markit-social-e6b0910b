@@ -22,7 +22,7 @@ const Auth = () => {
           .from('profiles')
           .select('username')
           .eq('clerk_user_id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (!profile?.username) {
           navigate('/onboarding');
@@ -42,7 +42,7 @@ const Auth = () => {
           .from('profiles')
           .select('username')
           .eq('clerk_user_id', session.user.id)
-          .single();
+          .maybeSingle();
 
         if (!profile?.username) {
           navigate('/onboarding');

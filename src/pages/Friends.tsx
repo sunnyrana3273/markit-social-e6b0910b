@@ -863,64 +863,50 @@ const Friends = () => {
 
             {/* Friends List */}
             <Card className="p-6 bg-white border border-gray-200">
-              <h2 className="text-xl font-semibold text-home-foreground mb-4">All Friends ({friends.length})</h2>
-              {friends.length > 0 ? (
+              <h2 className="text-xl font-semibold text-home-foreground mb-4">All Friends ({friendsWithMetrics.length})</h2>
+              {friendsWithMetrics.length > 0 ? (
                 <div className="grid md:grid-cols-2 gap-4">
-                  {friends.map((friend) => (
-                    <div key={friend.id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="flex items-start gap-4">
-                        <div className="relative">
-                          <div className="w-12 h-12 rounded-full bg-home-secondary flex items-center justify-center">
-                            <span className="text-sm font-medium text-white">{friend.avatar}</span>
-                          </div>
-                          <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                            friend.status === 'online' ? 'bg-green-500' : 
-                            friend.status === 'studying' ? 'bg-yellow-500' : 'bg-gray-400'
-                          }`} />
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-medium text-home-foreground truncate">{friend.name}</h3>
-                            <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
-                              <MessageSquare className="w-4 h-4" />
-                            </Button>
-                          </div>
+                  {friendsWithMetrics.map((friend) => {
+                    const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + day.problems_completed, 0) || 0;
+                    const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + day.minutes_studied, 0) || 0;
+                    
+                    return (
+                      <div key={friend.friend_id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
+                        <div className="flex items-start gap-4">
+                          <Avatar className="w-12 h-12">
+                            <AvatarImage src={friend.profiles.image_url || undefined} />
+                            <AvatarFallback className="bg-home-primary text-white">
+                              {getInitials(friend.profiles.first_name, friend.profiles.last_name, friend.profiles.email)}
+                            </AvatarFallback>
+                          </Avatar>
                           
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-3 text-xs text-gray-600">
-                              <span className="capitalize">{friend.status}</span>
-                              <span>•</span>
-                              <span>{friend.lastActive}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="font-medium text-home-foreground truncate">
+                                {`${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email}
+                              </h3>
+                              <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
+                                <MessageSquare className="w-4 h-4" />
+                              </Button>
                             </div>
                             
-                            <div className="flex items-center gap-4 text-xs">
-                              <div className="flex items-center gap-1">
-                                <Zap className="w-3 h-3 text-orange-500" />
-                                <span>{friend.studyStreak} day streak</span>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <BookUp className="w-3 h-3 text-blue-500" />
+                                  <span>{totalProblems} problems</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-green-500" />
+                                  <span>{totalMinutes} mins</span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <Trophy className="w-3 h-3 text-yellow-500" />
-                                <span>{friend.sessionsThisWeek} sessions</span>
-                              </div>
                             </div>
-                            
-                            <div className="flex flex-wrap gap-1">
-                              {friend.favoriteSubjects.slice(0, 2).map((subject, index) => (
-                                <Badge key={index} className="bg-home-primary/10 text-home-primary border-home-primary/20 text-xs">
-                                  {subject}
-                                </Badge>
-                              ))}
-                            </div>
-                            
-                            {friend.mutualFriends > 0 && (
-                              <p className="text-xs text-gray-500">{friend.mutualFriends} mutual friends</p>
-                            )}
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-600">

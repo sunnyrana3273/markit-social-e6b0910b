@@ -3,6 +3,14 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { 
   BookOpen, 
   Users, 
@@ -20,6 +28,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
+import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
 
 interface Profile {
   first_name: string | null;
@@ -43,11 +53,34 @@ interface FriendWithMetrics {
   }[];
 }
 
+// Username validation schema
+const usernameSchema = z.string()
+  .min(3, "Username must be at least 3 characters")
+  .max(30, "Username must be less than 30 characters")
+  .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores")
+  .trim();
+
+interface SearchedUser {
+  id: string;
+  clerk_user_id: string;
+  username: string;
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+}
+
 const Friends = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [friendsWithMetrics, setFriendsWithMetrics] = useState<FriendWithMetrics[]>([]);
+  const [searchUsername, setSearchUsername] = useState("");
+  const [searchedUser, setSearchedUser] = useState<SearchedUser | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -165,6 +198,104 @@ const Friends = () => {
     return "from-blue-400 via-blue-500 to-blue-600";
   };
 
+  const handleSearchUser = async () => {
+    if (!searchUsername.trim()) {
+      setSearchError("Please enter a username");
+      setSearchedUser(null);
+      return;
+    }
+
+    // Validate username format
+    try {
+      usernameSchema.parse(searchUsername);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        setSearchError(error.errors[0].message);
+        setSearchedUser(null);
+        return;
+      }
+    }
+
+    setIsSearching(true);
+    setSearchError("");
+    setSearchedUser(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, clerk_user_id, username, first_name, last_name, image_url, email')
+        .eq('username', searchUsername.trim())
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        setSearchError("User not found");
+        setSearchedUser(null);
+      } else if (data.clerk_user_id === user?.id) {
+        setSearchError("You cannot add yourself as a friend");
+        setSearchedUser(null);
+      } else {
+        // Check if already friends or request pending
+        const { data: existingFriend } = await supabase
+          .from('friends')
+          .select('status')
+          .or(`and(user_id.eq.${user?.id},friend_id.eq.${data.clerk_user_id}),and(user_id.eq.${data.clerk_user_id},friend_id.eq.${user?.id})`)
+          .maybeSingle();
+
+        if (existingFriend) {
+          if (existingFriend.status === 'accepted') {
+            setSearchError("Already friends with this user");
+          } else {
+            setSearchError("Friend request already pending");
+          }
+          setSearchedUser(null);
+        } else {
+          setSearchedUser(data as SearchedUser);
+        }
+      }
+    } catch (error) {
+      console.error('Error searching user:', error);
+      setSearchError("Failed to search for user");
+      setSearchedUser(null);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSendFriendRequest = async () => {
+    if (!user || !searchedUser) return;
+
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .insert({
+          user_id: user.id,
+          friend_id: searchedUser.clerk_user_id,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `Friend request sent to ${searchedUser.username}!`
+      });
+
+      setIsAddFriendOpen(false);
+      setSearchUsername("");
+      setSearchedUser(null);
+      setSearchError("");
+    } catch (error) {
+      console.error('Error sending friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send friend request",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Mock data - will be replaced with real data from Supabase
   const friends: any[] = [];
 
@@ -226,10 +357,80 @@ const Friends = () => {
                 <h1 className="text-3xl font-bold text-home-foreground">Friends</h1>
                 <p className="text-gray-600">Connect and study with your learning partners</p>
               </div>
-              <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
-                <UserPlus className="w-5 h-5 mr-2" />
-                Add Friend
-              </Button>
+              <Dialog open={isAddFriendOpen} onOpenChange={setIsAddFriendOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
+                    <UserPlus className="w-5 h-5 mr-2" />
+                    Add Friend
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add Friend</DialogTitle>
+                    <DialogDescription>
+                      Search for a user by their username to send a friend request
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Enter username..."
+                        value={searchUsername}
+                        onChange={(e) => {
+                          setSearchUsername(e.target.value);
+                          setSearchError("");
+                          setSearchedUser(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleSearchUser();
+                          }
+                        }}
+                        maxLength={30}
+                      />
+                      <Button 
+                        onClick={handleSearchUser}
+                        disabled={isSearching || !searchUsername.trim()}
+                      >
+                        {isSearching ? "Searching..." : "Search"}
+                      </Button>
+                    </div>
+
+                    {searchError && (
+                      <p className="text-sm text-red-600">{searchError}</p>
+                    )}
+
+                    {searchedUser && (
+                      <Card className="p-4 border border-home-primary/20 bg-home-surface/30">
+                        <div className="flex items-center gap-4">
+                          <Avatar className="w-12 h-12">
+                            <AvatarImage src={searchedUser.image_url || undefined} />
+                            <AvatarFallback className="bg-home-primary text-white">
+                              {getInitials(searchedUser.first_name, searchedUser.last_name, searchedUser.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-home-foreground">
+                              {searchedUser.first_name && searchedUser.last_name
+                                ? `${searchedUser.first_name} ${searchedUser.last_name}`
+                                : searchedUser.username}
+                            </h3>
+                            <p className="text-sm text-gray-600">@{searchedUser.username}</p>
+                          </div>
+                          <Button 
+                            onClick={handleSendFriendRequest}
+                            size="sm"
+                            className="bg-home-primary hover:bg-home-primary-hover text-white"
+                          >
+                            <UserPlus className="w-4 h-4 mr-1" />
+                            Add Friend
+                          </Button>
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
 
             {/* Search */}

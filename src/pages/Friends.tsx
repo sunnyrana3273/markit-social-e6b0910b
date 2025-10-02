@@ -23,8 +23,18 @@ import {
   Clock,
   Trophy,
   Zap,
-  BookUp
+  BookUp,
+  CheckCircle,
+  XCircle,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,6 +93,9 @@ const Friends = () => {
   const [searchError, setSearchError] = useState("");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const [outgoingRequests, setOutgoingRequests] = useState<any[]>([]);
+  const [isFriendRequestsExpanded, setIsFriendRequestsExpanded] = useState(false);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -162,6 +175,57 @@ const Friends = () => {
           );
 
           setFriendsWithMetrics(friendsWithMetricsData);
+        }
+      }
+
+      // Fetch incoming friend requests (where current user is the friend_id)
+      const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
+        .from('friends')
+        .select('user_id, created_at')
+        .eq('friend_id', session.user.id)
+        .eq('status', 'pending');
+
+      if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
+        console.log('Found incoming friend requests:', incomingFriendsData);
+        const userIds = incomingFriendsData.map(req => req.user_id);
+        const { data: incomingProfilesData } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, image_url, email')
+          .in('id', userIds);
+
+        console.log('Found incoming profiles:', incomingProfilesData);
+        if (incomingProfilesData) {
+          const incomingRequests = incomingFriendsData.map(friends => {
+            const profile = incomingProfilesData.find(p => p.id === friends.user_id);
+            return { ...friends, profiles: profile };
+          });
+          console.log('Setting incoming requests:', incomingRequests);
+          setIncomingRequests(incomingRequests);
+        }
+      } else {
+        console.log('No incoming friend requests found or error:', { incomingFriendsData, incomingFriendsError });
+      }
+
+      // Fetch outgoing friend requests (where current user is the user_id)
+      const { data: outgoingFriendsData, error: outgoingFriendsError } = await supabase
+        .from('friends')
+        .select('friend_id, created_at')
+        .eq('user_id', session.user.id)
+        .eq('status', 'pending');
+
+      if (outgoingFriendsData && !outgoingFriendsError && outgoingFriendsData.length > 0) {
+        const friendIds = outgoingFriendsData.map(req => req.friend_id);
+        const { data: outgoingProfilesData } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, image_url, email')
+          .in('id', friendIds);
+
+        if (outgoingProfilesData) {
+          const outgoingRequests = outgoingFriendsData.map(friends => {
+            const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
+            return { ...friends, profiles: profile };
+          });
+          setOutgoingRequests(outgoingRequests);
         }
       }
     };
@@ -305,6 +369,29 @@ const Friends = () => {
         description: `Friend request sent to ${searchedUser.username}!`
       });
 
+      // Refresh outgoing requests to show the new request
+      const { data: outgoingFriendsData } = await supabase
+        .from('friends')
+        .select('friend_id, created_at')
+        .eq('user_id', user.id)
+        .eq('status', 'pending');
+
+      if (outgoingFriendsData && outgoingFriendsData.length > 0) {
+        const friendIds = outgoingFriendsData.map(req => req.friend_id);
+        const { data: outgoingProfilesData } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, image_url, email')
+          .in('id', friendIds);
+
+        if (outgoingProfilesData) {
+          const outgoingRequests = outgoingFriendsData.map(friends => {
+            const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
+            return { ...friends, profiles: profile };
+          });
+          setOutgoingRequests(outgoingRequests);
+        }
+      }
+
       setIsAddFriendOpen(false);
       setSearchUsername("");
       setSearchedUser(null);
@@ -314,6 +401,102 @@ const Friends = () => {
       toast({
         title: "Error",
         description: "Failed to send friend request",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAcceptRequest = async (userId: string, friendId: string) => {
+    try {
+      // Update the friend request to accepted
+      const { error: updateError } = await supabase
+        .from('friends')
+        .update({ status: 'accepted' })
+        .eq('user_id', userId)
+        .eq('friend_id', friendId);
+
+      if (updateError) throw updateError;
+
+      // Create the reciprocal friendship
+      const { error: insertError } = await supabase
+        .from('friends')
+        .insert({
+          user_id: friendId,
+          friend_id: userId,
+          status: 'accepted'
+        });
+
+      if (insertError) throw insertError;
+
+      // Remove from incoming requests
+      setIncomingRequests(prev => prev.filter(req => req.user_id !== userId));
+      
+      toast({
+        title: "Success",
+        description: "Friend request accepted!"
+      });
+
+      // Refresh the page to show updated friends list
+      window.location.reload();
+    } catch (error) {
+      console.error('Error accepting friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to accept friend request",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeclineRequest = async (userId: string, friendId: string) => {
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .delete()
+        .eq('user_id', userId)
+        .eq('friend_id', friendId);
+
+      if (error) throw error;
+
+      // Remove from incoming requests
+      setIncomingRequests(prev => prev.filter(req => req.user_id !== userId));
+      
+      toast({
+        title: "Success",
+        description: "Friend request declined"
+      });
+    } catch (error) {
+      console.error('Error declining friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to decline friend request",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleCancelRequest = async (friendId: string) => {
+    try {
+      const { error } = await supabase
+        .from('friends')
+        .delete()
+        .eq('user_id', user?.id)
+        .eq('friend_id', friendId);
+
+      if (error) throw error;
+
+      // Remove from outgoing requests
+      setOutgoingRequests(prev => prev.filter(req => req.friend_id !== friendId));
+      
+      toast({
+        title: "Success",
+        description: "Friend request cancelled"
+      });
+    } catch (error) {
+      console.error('Error cancelling friend request:', error);
+      toast({
+        title: "Error",
+        description: "Failed to cancel friend request",
         variant: "destructive"
       });
     }
@@ -354,9 +537,71 @@ const Friends = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Bell className="w-5 h-5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface relative">
+                  <Bell className="w-5 h-5" />
+                  {incomingRequests.length > 0 && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-medium">
+                      {incomingRequests.length}
+                    </div>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-80">
+                <div className="p-3 border-b">
+                  <h3 className="font-semibold text-home-foreground">Notifications</h3>
+                </div>
+                {incomingRequests.length > 0 ? (
+                  <div className="max-h-60 overflow-y-auto">
+                    {incomingRequests.slice(0, 5).map((request) => (
+                      <DropdownMenuItem key={request.user_id} className="p-3">
+                        <div className="flex items-center gap-3 w-full">
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={request.profiles?.image_url} />
+                            <AvatarFallback className="bg-home-primary text-white text-xs">
+                              {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-home-foreground">
+                              {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
+                            </p>
+                            <p className="text-xs text-gray-600">wants to be your friend</p>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAcceptRequest(request.user_id, request.profiles?.id);
+                              }}
+                              className="h-6 w-6 p-0 bg-green-500 hover:bg-green-600"
+                            >
+                              <CheckCircle className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeclineRequest(request.user_id, request.profiles?.id);
+                              }}
+                              className="h-6 w-6 p-0 bg-red-500 hover:bg-red-600"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                ) : (
+                  <DropdownMenuItem className="p-4 text-center text-gray-500">
+                    No notifications
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button 
               variant="ghost" 
               size="icon" 
@@ -685,6 +930,114 @@ const Friends = () => {
                 </div>
               )}
             </Card>
+
+            {/* Compact Friend Requests Section */}
+            {(incomingRequests.length > 0 || outgoingRequests.length > 0) && (
+              <Card className="p-6 bg-white border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-home-foreground">
+                    Friend Requests ({incomingRequests.length + outgoingRequests.length})
+                  </h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsFriendRequestsExpanded(!isFriendRequestsExpanded)}
+                    className="text-home-foreground"
+                  >
+                    {isFriendRequestsExpanded ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+                
+                {isFriendRequestsExpanded && (
+                  <div className="space-y-4">
+                    {/* Incoming Requests */}
+                    {incomingRequests.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">Incoming ({incomingRequests.length})</h3>
+                        <div className="space-y-2">
+                          {incomingRequests.map((request) => (
+                            <div key={request.user_id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                              <Avatar className="w-10 h-10">
+                                <AvatarImage src={request.profiles?.image_url} />
+                                <AvatarFallback className="bg-home-primary text-white">
+                                  {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-home-foreground truncate">
+                                  {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Sent {new Date(request.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAcceptRequest(request.user_id, request.profiles?.id)}
+                                  className="bg-green-500 hover:bg-green-600 text-white h-8 px-3"
+                                >
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeclineRequest(request.user_id, request.profiles?.id)}
+                                  className="border-gray-300 text-gray-600 hover:bg-gray-100 h-8 px-3"
+                                >
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Decline
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Outgoing Requests */}
+                    {outgoingRequests.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-700 mb-3">Outgoing ({outgoingRequests.length})</h3>
+                        <div className="space-y-2">
+                          {outgoingRequests.map((request) => (
+                            <div key={request.friend_id} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                              <Avatar className="w-10 h-10">
+                                <AvatarImage src={request.profiles?.image_url} />
+                                <AvatarFallback className="bg-blue-500 text-white">
+                                  {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-home-foreground truncate">
+                                  {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Sent {new Date(request.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelRequest(request.friend_id)}
+                                className="border-gray-300 text-gray-600 hover:bg-gray-100 h-8 px-3"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}

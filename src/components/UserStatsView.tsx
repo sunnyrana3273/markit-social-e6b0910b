@@ -62,15 +62,15 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
   return (
     <div
       className={`
-        glass p-6 rounded-lg transition-all duration-300 
+        glass p-4 rounded-lg transition-all duration-300 
         ${getScaleClass()} ${getGlowClass()}
         border border-border/50
         ${isEmpty ? 'grayscale' : ''}
       `}
     >
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <div className={`
-          p-4 rounded-full 
+          p-3 rounded-full 
           bg-gradient-to-br from-primary/20 to-secondary/20
           ${getGradientIntensity()}
           transition-all duration-300
@@ -78,8 +78,8 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
           {icon}
         </div>
         <div className="flex-1">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-3xl font-bold text-foreground mt-1">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-2xl font-bold text-foreground mt-0.5">
             {isEmpty ? emptyMessage : (typeof value === 'number' ? displayValue : value)}
           </p>
         </div>
@@ -87,8 +87,8 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
 
       {/* Progress bar for milestones */}
       {!isEmpty && typeof value === 'number' && value > 0 && (
-        <div className="mt-4">
-          <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div className="mt-3">
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div 
               className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-1000"
               style={{ 
@@ -96,7 +96,7 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
               }}
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[10px] text-muted-foreground mt-1.5">
             {value >= 100 ? `${Math.floor(value / 100)} milestone${Math.floor(value / 100) > 1 ? 's' : ''} reached!` : `${100 - (value % 100)} to next milestone`}
           </p>
         </div>
@@ -127,15 +127,15 @@ export const UserStatsView = () => {
   );
 
   return (
-    <div className="space-y-6 p-4">
-      <div className="mb-4">
-        <h2 className="text-2xl font-bold text-foreground">Your Statistics</h2>
-        <p className="text-muted-foreground">Track your learning journey</p>
+    <div className="space-y-4 p-3">
+      <div className="mb-3">
+        <h2 className="text-xl font-bold text-foreground">Your Statistics</h2>
+        <p className="text-sm text-muted-foreground">Track your learning journey</p>
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         <StatCard
-          icon={<Clock className="w-6 h-6 text-primary" />}
+          icon={<Clock className="w-5 h-5 text-primary" />}
           label="Lifetime Minutes Studied"
           value={stats?.lifetime_minutes_studied || 0}
           isEmpty={!stats?.lifetime_minutes_studied}
@@ -143,7 +143,7 @@ export const UserStatsView = () => {
         />
 
         <StatCard
-          icon={<Brain className="w-6 h-6 text-secondary" />}
+          icon={<Brain className="w-5 h-5 text-secondary" />}
           label="Questions Answered"
           value={stats?.lifetime_questions_answered || 0}
           isEmpty={!stats?.lifetime_questions_answered}
@@ -151,7 +151,7 @@ export const UserStatsView = () => {
         />
 
         <StatCard
-          icon={<Flame className="w-6 h-6 text-accent" />}
+          icon={<Flame className="w-5 h-5 text-accent" />}
           label="Longest Streak"
           value={stats?.longest_streak || 0}
           isEmpty={!stats?.longest_streak}
@@ -159,7 +159,7 @@ export const UserStatsView = () => {
         />
 
         <StatCard
-          icon={<Heart className="w-6 h-6 text-destructive" />}
+          icon={<Heart className="w-5 h-5 text-destructive" />}
           label="Favorite Community"
           value={stats?.favorite_community_name || "None yet"}
           isEmpty={!stats?.favorite_community_name}
@@ -168,8 +168,8 @@ export const UserStatsView = () => {
       </div>
 
       {isEmpty && (
-        <div className="mt-8 p-6 glass rounded-lg text-center">
-          <p className="text-muted-foreground">
+        <div className="mt-4 p-4 glass rounded-lg text-center">
+          <p className="text-sm text-muted-foreground">
             Start your learning journey today! Study, ask questions, and join communities to see your stats grow.
           </p>
         </div>

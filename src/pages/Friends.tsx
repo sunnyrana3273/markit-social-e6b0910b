@@ -17,6 +17,7 @@ import {
   Plus, 
   Search,
   MessageSquare,
+  MessageCircle,
   UserPlus,
   Settings,
   Bell,
@@ -42,6 +43,7 @@ import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import SettingsModal from "@/components/SettingsModal";
+import { FriendChat } from "@/components/FriendChat";
 
 interface Profile {
   first_name: string | null;
@@ -96,6 +98,7 @@ const Friends = () => {
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<any[]>([]);
   const [isFriendRequestsExpanded, setIsFriendRequestsExpanded] = useState(false);
+  const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -885,8 +888,16 @@ const Friends = () => {
                               <h3 className="font-medium text-home-foreground truncate">
                                 {`${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email}
                               </h3>
-                              <Button variant="ghost" size="sm" className="text-home-foreground hover:bg-home-surface">
-                                <MessageSquare className="w-4 h-4" />
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-home-foreground hover:bg-home-surface"
+                                onClick={() => setChatFriend({ 
+                                  id: friend.profiles.id, 
+                                  name: `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email
+                                })}
+                              >
+                                <MessageCircle className="w-4 h-4" />
                               </Button>
                             </div>
                             
@@ -1082,6 +1093,14 @@ const Friends = () => {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
       />
+
+      {chatFriend && (
+        <FriendChat
+          friendId={chatFriend.id}
+          friendName={chatFriend.name}
+          onClose={() => setChatFriend(null)}
+        />
+      )}
     </div>
   );
 };

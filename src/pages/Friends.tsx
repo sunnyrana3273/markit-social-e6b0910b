@@ -244,107 +244,118 @@ const Friends = () => {
             </Card>
 
             {/* Friends Leaderboard */}
-            {leaderboard.length > 0 && (
-              <Card className="p-6 bg-gradient-to-br from-home-primary/5 to-home-secondary/5 border border-home-primary/20">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-2xl font-bold text-home-foreground flex items-center gap-2">
-                      <Trophy className="w-6 h-6 text-yellow-500" />
-                      Friends Leaderboard
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-1">Last 7 days performance</p>
-                  </div>
+            <Card className="p-6 bg-gradient-to-br from-home-primary/5 to-home-secondary/5 border border-home-primary/20">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-home-foreground flex items-center gap-2">
+                    <Trophy className="w-6 h-6 text-yellow-500" />
+                    Friends Leaderboard
+                  </h2>
+                  <p className="text-sm text-gray-600 mt-1">Last 7 days performance</p>
                 </div>
-                
-                <style>{`
-                  .rank-1:hover {
-                    transform: translateY(-8px) scale(1.03);
-                    box-shadow: 0 20px 40px -10px rgba(234, 179, 8, 0.5), 0 0 60px rgba(234, 179, 8, 0.3);
-                  }
-                  .rank-2:hover {
-                    transform: translateY(-6px) scale(1.025);
-                    box-shadow: 0 15px 35px -8px rgba(156, 163, 175, 0.4), 0 0 40px rgba(156, 163, 175, 0.25);
-                  }
-                  .rank-3:hover {
-                    transform: translateY(-5px) scale(1.02);
-                    box-shadow: 0 12px 30px -8px rgba(180, 83, 9, 0.4), 0 0 30px rgba(180, 83, 9, 0.2);
-                  }
-                  .rank-other:hover {
-                    transform: translateY(-3px) scale(1.01);
-                    box-shadow: 0 8px 20px -5px rgba(59, 130, 246, 0.3);
-                  }
-                  .leaderboard-item {
-                    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-                  }
-                  .rank-badge {
-                    transition: all 0.3s ease;
-                  }
-                  .rank-1:hover .rank-badge {
-                    transform: rotate(360deg) scale(1.2);
-                  }
-                  .rank-2:hover .rank-badge {
-                    transform: rotate(180deg) scale(1.15);
-                  }
-                  .rank-3:hover .rank-badge {
-                    transform: rotate(90deg) scale(1.1);
-                  }
-                `}</style>
+              </div>
 
-                <div className="space-y-3">
-                  {leaderboard.map((friend, index) => (
-                    <div
-                      key={friend.id}
-                      className={`leaderboard-item ${getRankClass(index)} p-5 rounded-xl bg-white/80 backdrop-blur-sm border-2 cursor-pointer ${
-                        index === 0 ? 'border-yellow-400' :
-                        index === 1 ? 'border-gray-400' :
-                        index === 2 ? 'border-amber-700' :
-                        'border-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-4">
-                        {/* Rank Badge */}
-                        <div className={`rank-badge flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br ${getRankColor(index)} flex items-center justify-center font-bold text-white text-lg shadow-lg`}>
-                          {index + 1}
-                        </div>
-                        
-                        {/* Avatar */}
-                        <Avatar className="w-12 h-12 border-2 border-white shadow-md">
-                          <AvatarImage src={friend.image_url || undefined} />
-                          <AvatarFallback className="bg-home-primary text-white font-medium">
-                            {friend.initials}
-                          </AvatarFallback>
-                        </Avatar>
-                        
-                        {/* Friend Info */}
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-home-foreground text-lg truncate">{friend.name}</h3>
-                          <div className="flex items-center gap-4 mt-1">
-                            <div className="flex items-center gap-1 text-sm">
-                              <Trophy className="w-4 h-4 text-orange-500" />
-                              <span className="font-semibold text-orange-600">{friend.totalProblems}</span>
-                              <span className="text-gray-500">problems</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-sm">
-                              <Clock className="w-4 h-4 text-blue-500" />
-                              <span className="font-semibold text-blue-600">{friend.totalMinutes}</span>
-                              <span className="text-gray-500">min</span>
+              {leaderboard.length > 0 ? (
+                <>
+                  <style>{`
+                    .rank-1:hover {
+                      transform: translateY(-8px) scale(1.03);
+                      box-shadow: 0 20px 40px -10px rgba(234, 179, 8, 0.5), 0 0 60px rgba(234, 179, 8, 0.3);
+                    }
+                    .rank-2:hover {
+                      transform: translateY(-6px) scale(1.025);
+                      box-shadow: 0 15px 35px -8px rgba(156, 163, 175, 0.4), 0 0 40px rgba(156, 163, 175, 0.25);
+                    }
+                    .rank-3:hover {
+                      transform: translateY(-5px) scale(1.02);
+                      box-shadow: 0 12px 30px -8px rgba(180, 83, 9, 0.4), 0 0 30px rgba(180, 83, 9, 0.2);
+                    }
+                    .rank-other:hover {
+                      transform: translateY(-3px) scale(1.01);
+                      box-shadow: 0 8px 20px -5px rgba(59, 130, 246, 0.3);
+                    }
+                    .leaderboard-item {
+                      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                    }
+                    .rank-badge {
+                      transition: all 0.3s ease;
+                    }
+                    .rank-1:hover .rank-badge {
+                      transform: rotate(360deg) scale(1.2);
+                    }
+                    .rank-2:hover .rank-badge {
+                      transform: rotate(180deg) scale(1.15);
+                    }
+                    .rank-3:hover .rank-badge {
+                      transform: rotate(90deg) scale(1.1);
+                    }
+                  `}</style>
+                  <div className="space-y-3">
+                    {leaderboard.map((friend, index) => (
+                      <div
+                        key={friend.id}
+                        className={`leaderboard-item ${getRankClass(index)} p-5 rounded-xl bg-white/80 backdrop-blur-sm border-2 cursor-pointer ${
+                          index === 0 ? 'border-yellow-400' :
+                          index === 1 ? 'border-gray-400' :
+                          index === 2 ? 'border-amber-700' :
+                          'border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-4">
+                          {/* Rank Badge */}
+                          <div className={`rank-badge flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br ${getRankColor(index)} flex items-center justify-center font-bold text-white text-lg shadow-lg`}>
+                            {index + 1}
+                          </div>
+                          
+                          {/* Avatar */}
+                          <Avatar className="w-12 h-12 border-2 border-white shadow-md">
+                            <AvatarImage src={friend.image_url || undefined} />
+                            <AvatarFallback className="bg-home-primary text-white font-medium">
+                              {friend.initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          
+                          {/* Friend Info */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-home-foreground text-lg truncate">{friend.name}</h3>
+                            <div className="flex items-center gap-4 mt-1">
+                              <div className="flex items-center gap-1 text-sm">
+                                <Trophy className="w-4 h-4 text-orange-500" />
+                                <span className="font-semibold text-orange-600">{friend.totalProblems}</span>
+                                <span className="text-gray-500">problems</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-sm">
+                                <Clock className="w-4 h-4 text-blue-500" />
+                                <span className="font-semibold text-blue-600">{friend.totalMinutes}</span>
+                                <span className="text-gray-500">min</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        
-                        {/* Score */}
-                        <div className="flex-shrink-0 text-right">
-                          <div className={`text-2xl font-bold bg-gradient-to-r ${getRankColor(index)} bg-clip-text text-transparent`}>
-                            {friend.score.toFixed(0)}
+                          
+                          {/* Score */}
+                          <div className="flex-shrink-0 text-right">
+                            <div className={`text-2xl font-bold bg-gradient-to-r ${getRankColor(index)} bg-clip-text text-transparent`}>
+                              {friend.score.toFixed(0)}
+                            </div>
+                            <div className="text-xs text-gray-500 font-medium">score</div>
                           </div>
-                          <div className="text-xs text-gray-500 font-medium">score</div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12">
+                  <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No friends to beat yet!</h3>
+                  <p className="text-sm text-gray-500 mb-4">Add friends to see who's studying the most</p>
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Add Friends
+                  </Button>
                 </div>
-              </Card>
-            )}
+              )}
+            </Card>
 
             {/* Friend Requests */}
             {friendRequests.length > 0 && (

@@ -1076,15 +1076,6 @@ const Friends = () => {
                 Create Study Group
               </Button>
             </Card>
-
-            {/* Friend Activity */}
-            <Card className="p-6 bg-home-primary text-white">
-              <div className="text-center">
-                <Users className="w-12 h-12 mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Stay Connected</h3>
-                <p className="text-sm opacity-90">Study together and motivate each other to reach your goals!</p>
-              </div>
-            </Card>
           </div>
         </div>
       </div>

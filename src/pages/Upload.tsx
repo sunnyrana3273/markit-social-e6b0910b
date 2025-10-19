@@ -13,7 +13,8 @@ import {
   Music,
   Video,
   Archive,
-  X
+  X,
+  ExternalLink
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -382,8 +383,16 @@ const Upload = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDownload(file)}
+                        onClick={() => navigate(`/document/${file.id}`)}
                         className="text-home-primary hover:bg-home-primary/10"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDownload(file)}
+                        className="text-gray-600 hover:bg-gray-100"
                       >
                         <Download className="w-4 h-4" />
                       </Button>

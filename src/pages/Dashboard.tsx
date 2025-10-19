@@ -39,23 +39,11 @@ interface UploadedFile {
   created_at: string;
 }
 
-interface JoinedCommunity {
-  id: string;
-  course_communities: {
-    id: string;
-    course_name: string;
-    course_category: string;
-    description: string;
-  };
-  joined_at: string;
-}
-
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
-  const [joinedCommunities, setJoinedCommunities] = useState<JoinedCommunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -121,29 +109,6 @@ const Dashboard = () => {
           console.error('Error fetching files:', filesError);
         } else {
           setRecentFiles(filesData || []);
-        }
-
-        // Fetch joined communities
-        const { data: communitiesData, error: communitiesError } = await supabase
-          .from('community_memberships')
-          .select(`
-            id,
-            joined_at,
-            course_communities:community_id (
-              id,
-              course_name,
-              course_category,
-              description
-            )
-          `)
-          .eq('user_id', session.user.id)
-          .order('joined_at', { ascending: false })
-          .limit(6);
-
-        if (communitiesError) {
-          console.error('Error fetching communities:', communitiesError);
-        } else {
-          setJoinedCommunities(communitiesData || []);
         }
       } catch (error) {
         console.error('Error initializing user:', error);
@@ -381,7 +346,12 @@ const Dashboard = () => {
                           </div>
                         </div>
                       </div>
-                      <Button variant="outline" size="sm" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white"
+                        onClick={() => navigate(`/document/${file.id}`)}
+                      >
                         Open
                       </Button>
                     </div>
@@ -396,71 +366,24 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Joined Communities */}
-            <Card className="p-6 bg-white border border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-home-foreground">Joined Communities</h2>
-                <Link to="/communities">
-                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Browse all</Button>
-                </Link>
-              </div>
-              
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {joinedCommunities.length > 0 ? (
-                  joinedCommunities.map((membership) => (
-                    <Link 
-                      key={membership.id}
-                      to={`/community/${membership.course_communities.id}`}
-                    >
-                      <Card className="p-4 hover:bg-gray-50 transition-colors cursor-pointer border border-gray-200">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-home-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <BookOpen className="w-5 h-5 text-home-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-home-foreground truncate">{membership.course_communities.course_name}</h3>
-                            <Badge variant="secondary" className="mt-1 text-xs">{membership.course_communities.course_category}</Badge>
-                            <p className="text-xs text-gray-500 mt-2">
-                              Joined {formatRelativeTime(membership.joined_at)}
-                            </p>
-                          </div>
-                        </div>
-                      </Card>
-                    </Link>
-                  ))
-                ) : (
-                  <div className="col-span-full text-center py-8 text-gray-600">
-                    <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="mb-2">No communities joined yet</p>
-                    <p className="text-sm mb-4">Join communities to connect with fellow learners!</p>
-                    <Link to="/communities">
-                      <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
-                        Browse Communities
-                      </Button>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </Card>
-
             {/* Quick Actions */}
             <Card className="p-6 bg-white border border-gray-200">
               <h2 className="text-xl font-semibold text-home-foreground mb-4">Quick Actions</h2>
               <div className="grid md:grid-cols-3 gap-4">
                 <Link to="/session/new">
-                  <Button variant="outline" className="w-full h-20 flex-col border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
+                  <Button variant="outline" className="w-full h-20 flex-col border-home-primary text-home-primary hover:bg-home-primary/10 hover:border-home-primary/80 transition-colors">
                     <Plus className="w-6 h-6 mb-2" />
                     Create Session
                   </Button>
                 </Link>
                 <Link to="/communities">
-                  <Button variant="outline" className="w-full h-20 flex-col border-home-secondary text-home-secondary hover:bg-home-secondary hover:text-white">
+                  <Button variant="outline" className="w-full h-20 flex-col border-home-secondary text-home-secondary hover:bg-home-secondary/10 hover:border-home-secondary/80 transition-colors">
                     <Users className="w-6 h-6 mb-2" />
                     Browse Communities
                   </Button>
                 </Link>
                 <Link to="/upload">
-                  <Button variant="outline" className="w-full h-20 flex-col border-gray-300 text-gray-600 hover:bg-gray-100">
+                  <Button variant="outline" className="w-full h-20 flex-col border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors">
                     <Calendar className="w-6 h-6 mb-2" />
                     Upload Document
                   </Button>

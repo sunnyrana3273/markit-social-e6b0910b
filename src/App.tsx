@@ -14,6 +14,7 @@ import StudySession from "./pages/StudySession";
 import Features from "./pages/Features";
 import Pricing from "./pages/Pricing";
 import Upload from "./pages/Upload";
+import DocumentEditor from "./pages/DocumentEditor";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/app" element={<Dashboard />} />
           <Route path="/upload" element={<Upload />} />
+          <Route path="/document/:fileId" element={<DocumentEditor />} />
           <Route path="/communities" element={<Communities />} />
           <Route path="/community/:communityId" element={<CourseCommunity />} />
           <Route path="/friends" element={<Friends />} />

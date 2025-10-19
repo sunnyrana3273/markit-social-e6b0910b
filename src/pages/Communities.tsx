@@ -10,7 +10,9 @@ import {
   Search,
   Bell,
   Settings,
-  BookUp
+  BookUp,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -25,12 +27,26 @@ interface Profile {
   email: string;
 }
 
+interface JoinedCommunity {
+  id: string;
+  course_communities: {
+    id: string;
+    course_name: string;
+    course_category: string;
+    description: string;
+  };
+  joined_at: string;
+}
+
 const Communities = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [joinedCommunities, setJoinedCommunities] = useState<JoinedCommunity[]>([]);
+  const [isCommunitiesMinimized, setIsCommunitiesMinimized] = useState(false);
+  const [isMyCommunitiesMinimized, setIsMyCommunitiesMinimized] = useState(false);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -73,6 +89,28 @@ const Communities = () => {
       } else if (profileData) {
         setProfile(profileData);
       }
+
+      // Fetch joined communities
+      if (session.user) {
+        const { data: joinedData } = await supabase
+          .from('community_memberships')
+          .select(`
+            id,
+            joined_at,
+            course_communities:community_id (
+              id,
+              course_name,
+              course_category,
+              description
+            )
+          `)
+          .eq('user_id', session.user.id)
+          .order('joined_at', { ascending: false });
+
+        if (joinedData) {
+          setJoinedCommunities(joinedData as JoinedCommunity[]);
+        }
+      }
     };
 
     initializeUser();
@@ -94,6 +132,19 @@ const Communities = () => {
 
     fetchCommunities();
   }, []);
+
+  const formatRelativeTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+    if (diffInDays === 0) return 'today';
+    if (diffInDays === 1) return 'yesterday';
+    if (diffInDays < 7) return `${diffInDays} days ago`;
+    if (diffInDays < 30) return `${Math.floor(diffInDays / 7)} weeks ago`;
+    return `${Math.floor(diffInDays / 30)} months ago`;
+  };
 
   const getInitials = () => {
     if (profile?.first_name && profile?.last_name) {
@@ -181,9 +232,7 @@ const Communities = () => {
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-4 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
+        <div className="space-y-6">
             {/* Header Section */}
             <div className="flex items-center justify-between">
               <div>
@@ -222,9 +271,89 @@ const Communities = () => {
               </div>
             </Card>
 
-            {/* AP Courses Grid */}
-            <div className="grid md:grid-cols-2 gap-8">
-              {filteredCategories.length > 0 ? (
+            {/* Joined Communities */}
+            {joinedCommunities.length > 0 && (
+              <Card className="p-6 bg-white border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-semibold text-home-foreground">My Communities</h2>
+                    <Badge variant="secondary">{joinedCommunities.length}</Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsMyCommunitiesMinimized(!isMyCommunitiesMinimized)}
+                    className="text-home-foreground hover:bg-gray-100"
+                  >
+                    {isMyCommunitiesMinimized ? (
+                      <>
+                        <ChevronDown className="w-4 h-4 mr-1" />
+                        Show
+                      </>
+                    ) : (
+                      <>
+                        <ChevronUp className="w-4 h-4 mr-1" />
+                        Minimize
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {!isMyCommunitiesMinimized && (
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {joinedCommunities.map((membership) => (
+                    <Link 
+                      key={membership.id}
+                      to={`/community/${membership.course_communities.id}`}
+                    >
+                      <Card className="p-4 hover:bg-gray-50 transition-colors cursor-pointer border border-gray-200">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 bg-home-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <BookOpen className="w-5 h-5 text-home-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-home-foreground truncate">{membership.course_communities.course_name}</h3>
+                            <Badge variant="secondary" className="mt-1 text-xs">{membership.course_communities.course_category}</Badge>
+                            <p className="text-xs text-gray-500 mt-2">
+                              Joined {formatRelativeTime(membership.joined_at)}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    </Link>
+                  ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Browse All Communities */}
+            <Card className="p-6 bg-white border border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-home-foreground">Browse All Communities</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsCommunitiesMinimized(!isCommunitiesMinimized)}
+                  className="text-home-foreground hover:bg-gray-100"
+                >
+                  {isCommunitiesMinimized ? (
+                    <>
+                      <ChevronDown className="w-4 h-4 mr-1" />
+                      Show All
+                    </>
+                  ) : (
+                    <>
+                      <ChevronUp className="w-4 h-4 mr-1" />
+                      Minimize
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {!isCommunitiesMinimized && (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                  {filteredCategories.length > 0 ? (
                 filteredCategories.map((category) => (
                 <div key={category.category} className="space-y-4">
                   <h2 className="text-2xl font-bold text-home-foreground border-t-4 border-gray-900 pt-4">
@@ -244,27 +373,16 @@ const Communities = () => {
                   </div>
                 </div>
               ))
-              ) : (
-                <div className="col-span-2 text-center py-12 text-gray-600">
-                  <p>No communities found matching "{searchQuery}"</p>
+                  ) : (
+                    <div className="col-span-full text-center py-12 text-gray-600">
+                      <p>No communities found matching "{searchQuery}"</p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Community Tips */}
-            <Card className="p-6 bg-home-primary text-white">
-              <div className="text-center">
-                <Users className="w-12 h-12 mx-auto mb-3" />
-                <h3 className="font-semibold mb-2">Join Active Communities</h3>
-                <p className="text-sm opacity-90">Connect with peers studying similar subjects for better learning outcomes!</p>
-              </div>
             </Card>
           </div>
         </div>
-      </div>
 
       <SettingsModal 
         isOpen={isSettingsOpen} 

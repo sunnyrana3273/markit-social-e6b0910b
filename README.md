@@ -1,4 +1,18 @@
-# Welcome to your Lovable project
+# Markit Social - Collaborative Learning Platform
+
+A modern social learning platform with real-time collaborative whiteboards, study sessions, and community features.
+
+## 🎨 **NEW: Collaborative Whiteboard Feature!**
+
+We've integrated Excalidraw with Supabase for real-time collaborative whiteboards. [**Get started in 5 minutes →**](./QUICKSTART-WHITEBOARD.md)
+
+### Quick Links
+- 📖 [Whiteboard Documentation](./README-WHITEBOARD.md) - Complete technical guide
+- 🚀 [Quick Start Guide](./QUICKSTART-WHITEBOARD.md) - Get up and running fast
+- 🚢 [Deployment Guide](./DEPLOYMENT.md) - Production deployment
+- 📊 [Feature Summary](./WHITEBOARD-SUMMARY.md) - What's included
+
+---
 
 ## Project info
 
@@ -54,15 +68,81 @@ npm run dev
 
 This project is built with:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- **Frontend:** React, TypeScript, Vite
+- **UI Components:** shadcn-ui, Tailwind CSS
+- **Whiteboard:** Excalidraw
+- **Backend:** Supabase (PostgreSQL, Realtime, Auth)
+- **Deployment:** Vercel, Docker (optional)
 
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/c90a3eac-cf10-4abe-964b-a4a80f26cbd7) and click on Share -> Publish.
+
+## Features
+
+### ✨ Collaborative Whiteboard
+- Real-time drawing and collaboration
+- Cursor tracking with user presence
+- Automatic scene persistence
+- Full Excalidraw toolset (shapes, arrows, text)
+- Export to PNG
+
+### 📚 Study & Learning
+- Course communities
+- Study sessions
+- Document upload and editing
+- Friend connections
+
+### 🔒 Security
+- Supabase authentication
+- Row-level security (RLS)
+- Session-based access control
+
+## Environment Setup
+
+Create a `.env.local` file with your Supabase credentials:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_anon_key
+```
+
+Get these from: [Supabase Dashboard](https://supabase.com/dashboard) → Settings → API
+
+## Whiteboard Quick Start
+
+```bash
+# 1. Run the database migration in Supabase SQL Editor
+# Copy: supabase/migrations/20251020000000_create_whiteboard_tables.sql
+
+# 2. Set up environment
+cp .env.docker .env.local
+# Edit .env.local with your credentials
+
+# 3. Install and run
+npm install
+npm run dev
+
+# 4. Navigate to /whiteboard/new in your browser
+```
+
+See [QUICKSTART-WHITEBOARD.md](./QUICKSTART-WHITEBOARD.md) for detailed instructions.
+
+## Deployment
+
+### Vercel (Recommended)
+```bash
+# Connect GitHub repo → Vercel
+# Set environment variables
+# Deploy!
+```
+
+### Docker
+```bash
+docker-compose up --build
+```
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for full deployment guide.
 
 ## Can I connect a custom domain to my Lovable project?
 
@@ -71,3 +151,9 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Support
+
+- 🐛 [Report Issues](https://github.com/your-repo/issues)
+- 📖 [Whiteboard Docs](./README-WHITEBOARD.md)
+- 🚀 [Quick Start](./QUICKSTART-WHITEBOARD.md)

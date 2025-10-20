@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Excalidraw, MainMenu, WelcomeScreen } from "@excalidraw/excalidraw";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,8 +12,12 @@ import {
   Download,
   Settings,
   Palette,
-  RotateCcw
+  RotateCcw,
+  Wifi,
+  WifiOff
 } from "lucide-react";
+import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
+import { toast } from "sonner";
 
 interface WhiteboardProps {
   sessionId?: string;
@@ -21,14 +25,11 @@ interface WhiteboardProps {
   onSceneChange?: (elements: any[], appState: any) => void;
 }
 
-const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProps) => {
+const Whiteboard = ({ sessionId = "default-session", isHost = false, onSceneChange }: WhiteboardProps) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const [selectedElements, setSelectedElements] = useState<any[]>([]);
-  const [collaborators, setCollaborators] = useState([
-    { id: "1", name: "Alex Chen", color: "#8b5cf6", cursor: { x: 100, y: 100 } },
-    { id: "2", name: "Sarah Kim", color: "#06b6d4", cursor: { x: 200, y: 150 } },
-  ]);
   const [showAIPanel, setShowAIPanel] = useState(false);
+  const [hasLoadedInitialScene, setHasLoadedInitialScene] = useState(false);
   const [aiThreads, setAIThreads] = useState([
     { 
       id: "1", 
@@ -38,14 +39,82 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
     }
   ]);
 
+  // Use refs to store latest callbacks to avoid recreating handlers
+  const broadcastRef = useRef<((elements: any[], appState: any) => void) | null>(null);
+  const broadcastCursorRef = useRef<((x: number, y: number) => void) | null>(null);
+  const onSceneChangeRef = useRef(onSceneChange);
+  
+  useEffect(() => {
+    onSceneChangeRef.current = onSceneChange;
+  }, [onSceneChange]);
+
+  // Use the real-time collaboration hook
+  const {
+    collaborators,
+    session,
+    isConnected,
+    sceneData,
+    broadcastSceneUpdate,
+    broadcastCursorMove,
+    currentColor,
+  } = useWhiteboardCollaboration(sessionId);
+
+  // Store the broadcast functions in refs
+  useEffect(() => {
+    broadcastRef.current = broadcastSceneUpdate;
+    broadcastCursorRef.current = broadcastCursorMove;
+  }, [broadcastSceneUpdate, broadcastCursorMove]);
+
+  // Load initial scene data once when it becomes available
+  useEffect(() => {
+    if (sceneData && excalidrawAPI && !hasLoadedInitialScene) {
+      excalidrawAPI.updateScene({
+        elements: sceneData.elements,
+        appState: sceneData.appState,
+      });
+      setHasLoadedInitialScene(true);
+    }
+  }, [sceneData, excalidrawAPI, hasLoadedInitialScene]);
+
+  // Handle incoming scene updates from other collaborators
+  useEffect(() => {
+    if (sceneData && excalidrawAPI && hasLoadedInitialScene) {
+      // Only update if the scene was updated by another user
+      // We can add a check here to prevent updating if this is our own change
+      const currentElements = excalidrawAPI.getSceneElements();
+      if (currentElements.length !== sceneData.elements.length) {
+        excalidrawAPI.updateScene({
+          elements: sceneData.elements,
+          appState: sceneData.appState,
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sceneData?.version]); // Only trigger on version changes (excalidrawAPI and hasLoadedInitialScene are intentionally excluded)
+
+  // Create a completely stable onChange handler using refs
   const handleSceneUpdate = useCallback((elements: any[], appState: any) => {
     // Update selected elements for AI assistance
-    const selected = elements.filter((el: any) => appState.selectedElementIds[el.id]);
+    const selected = elements.filter((el: any) => appState.selectedElementIds?.[el.id]);
     setSelectedElements(selected);
     
-    // Call parent callback
-    onSceneChange?.(elements, appState);
-  }, [onSceneChange]);
+    // Broadcast to other collaborators using ref
+    if (broadcastRef.current) {
+      broadcastRef.current(elements, appState);
+    }
+    
+    // Call parent callback using ref
+    if (onSceneChangeRef.current) {
+      onSceneChangeRef.current(elements, appState);
+    }
+  }, []); // Empty dependency array - completely stable
+
+  // Handle pointer movements for cursor tracking - completely stable
+  const handlePointerUpdate = useCallback((payload: any) => {
+    if (payload.pointer && broadcastCursorRef.current) {
+      broadcastCursorRef.current(payload.pointer.x, payload.pointer.y);
+    }
+  }, []); // Empty dependency array - completely stable
 
   const handleAskAI = useCallback(() => {
     if (selectedElements.length === 0) {
@@ -84,10 +153,22 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
       <div className="border-b border-border bg-surface/90 backdrop-blur-sm p-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h2 className="font-semibold text-foreground">AP Calculus Study Session</h2>
+            <h2 className="font-semibold text-foreground">
+              {session?.name || "Loading..."}
+            </h2>
             <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
               <div className="w-2 h-2 bg-success rounded-full mr-2" />
-              {collaborators.length + 1} Active
+              {collaborators.length} Active
+            </Badge>
+            <Badge 
+              variant="secondary" 
+              className={isConnected 
+                ? "bg-success/10 text-success border-success/20" 
+                : "bg-destructive/10 text-destructive border-destructive/20"
+              }
+            >
+              {isConnected ? <Wifi className="w-3 h-3 mr-1" /> : <WifiOff className="w-3 h-3 mr-1" />}
+              {isConnected ? "Connected" : "Disconnected"}
             </Badge>
           </div>
 
@@ -140,7 +221,9 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
         {/* Main Whiteboard */}
         <div className="flex-1 relative">
           <Excalidraw
+            excalidrawAPI={(api) => setExcalidrawAPI(api)}
             onChange={handleSceneUpdate}
+            onPointerUpdate={handlePointerUpdate}
             theme="dark"
             viewModeEnabled={false}
             zenModeEnabled={false}
@@ -150,7 +233,7 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
               appState: {
                 viewBackgroundColor: "hsl(220, 13%, 8%)",
                 currentItemFillStyle: "solid",
-                currentItemStrokeColor: "#8b5cf6",
+                currentItemStrokeColor: currentColor,
                 currentItemBackgroundColor: "transparent",
               },
             }}
@@ -194,6 +277,32 @@ const Whiteboard = ({ sessionId, isHost = false, onSceneChange }: WhiteboardProp
               </Badge>
             )}
           </div>
+
+          {/* Collaborator Cursors */}
+          {collaborators.map((collaborator) => 
+            collaborator.cursor_position && collaborator.is_online ? (
+              <div
+                key={collaborator.id}
+                className="absolute pointer-events-none transition-all duration-100"
+                style={{
+                  left: collaborator.cursor_position.x,
+                  top: collaborator.cursor_position.y,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                <div 
+                  className="w-4 h-4 rounded-full border-2 border-white shadow-lg"
+                  style={{ backgroundColor: collaborator.color }}
+                />
+                <div 
+                  className="absolute top-5 left-0 px-2 py-1 text-xs font-medium text-white rounded shadow-lg whitespace-nowrap"
+                  style={{ backgroundColor: collaborator.color }}
+                >
+                  {collaborator.name}
+                </div>
+              </div>
+            ) : null
+          )}
         </div>
 
         {/* Side Panels */}

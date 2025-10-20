@@ -15,6 +15,7 @@ import Features from "./pages/Features";
 import Pricing from "./pages/Pricing";
 import Upload from "./pages/Upload";
 import DocumentEditor from "./pages/DocumentEditor";
+import WhiteboardSession from "./pages/WhiteboardSession";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,8 @@ const App = () => (
           <Route path="/friends" element={<Friends />} />
           <Route path="/session/:sessionId" element={<StudySession />} />
           <Route path="/session/new" element={<StudySession />} />
+          <Route path="/whiteboard/:sessionId" element={<WhiteboardSession />} />
+          <Route path="/whiteboard/new" element={<WhiteboardSession />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

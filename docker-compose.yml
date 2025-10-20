@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Frontend React App (optional - for self-hosting)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-https://wvspwskluqkqeniwtoqf.supabase.co}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+    command: npm run dev -- --host 0.0.0.0
+
+  # Optional: Whiteboard Backend Service (if you need custom logic)
+  # This service provides additional features like AI integration, analytics, etc.
+  whiteboard-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL:-https://wvspwskluqkqeniwtoqf.supabase.co}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - PORT=3001
+      - NODE_ENV=production
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      - frontend
+
+networks:
+  default:
+    name: markit-network
+

@@ -183,3 +183,12 @@ All colors MUST be HSL for proper theming.
     background: hsl(var(--accent-hover));
   }
 }
+
+/* Excalidraw customizations */
+.excalidraw .sidebar-trigger {
+  display: none !important;
+}
+
+.excalidraw .help-icon {
+  display: none !important;
+}

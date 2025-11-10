@@ -156,7 +156,7 @@ All colors MUST be HSL for proper theming.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-lexend;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   

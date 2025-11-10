@@ -46,7 +46,8 @@ export function FriendChat({ friendId, friendName, onClose }: FriendChatProps) {
       const { data, error } = await supabase
         .from("friend_messages")
         .select("*")
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUserId})`)
+        .in('sender_id', [currentUserId, friendId])
+        .in('receiver_id', [currentUserId, friendId])
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -243,7 +244,11 @@ export function FriendChat({ friendId, friendName, onClose }: FriendChatProps) {
                         : "bg-muted text-foreground"
                     }`}
                   >
-                    <p className="text-sm">{msg.message}</p>
+                    {msg.message.startsWith('data:image') ? (
+                      <img src={msg.message} alt="attachment" className="rounded-md max-w-full h-auto" />
+                    ) : (
+                      <p className="text-sm">{msg.message}</p>
+                    )}
                     <div className="flex justify-between items-center mt-1">
                       <span className="text-xs opacity-70">
                         {format(new Date(msg.created_at), "h:mm a")}

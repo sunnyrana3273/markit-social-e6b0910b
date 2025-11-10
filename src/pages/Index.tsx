@@ -78,9 +78,20 @@ const Index = () => {
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </Link>
-                <Button variant="outline" size="lg" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                  <Video className="w-4 h-4 mr-2" />
-                  Watch Demo
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white"
+                >
+                  <a
+                    href="https://youtu.be/lRPaDEsEVoA?si=DDQ6Na7pLqLqF_gQ"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Video className="w-4 h-4 mr-2" />
+                    Watch Demo
+                  </a>
                 </Button>
               </div>
               

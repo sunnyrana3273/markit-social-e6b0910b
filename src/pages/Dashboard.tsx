@@ -46,6 +46,9 @@ const Dashboard = () => {
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [minutesToday, setMinutesToday] = useState<number>(0);
+  const [streakCount, setStreakCount] = useState<number>(0);
+  const [problemsToday, setProblemsToday] = useState<number>(0);
 
   useEffect(() => {
     // Check authentication and fetch profile
@@ -130,6 +133,63 @@ const Dashboard = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  useEffect(() => {
+    // Aggregate today's minutes from localStorage keys written by DocumentEditor
+    const aggregateToday = () => {
+      try {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        const yyyyMmDd = `${y}-${m}-${d}`;
+        let totalSeconds = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i) || '';
+          // Keys look like: studySeconds:<fileId>:YYYY-MM-DD
+          if (key.startsWith('studySeconds:') && key.endsWith(`:${yyyyMmDd}`)) {
+            const val = parseInt(localStorage.getItem(key) || '0', 10);
+            if (!isNaN(val)) totalSeconds += val;
+          }
+        }
+        setMinutesToday(Math.floor(totalSeconds / 60));
+      } catch (e) {
+        setMinutesToday(0);
+      }
+    };
+
+    const readStreak = () => {
+      try {
+        const count = parseInt(localStorage.getItem('studyStreak:count') || '0', 10) || 0;
+        setStreakCount(count);
+      } catch (e) {
+        setStreakCount(0);
+      }
+    };
+
+    const readProblemsToday = () => {
+      try {
+        const today = new Date();
+        const y = today.getFullYear();
+        const m = String(today.getMonth() + 1).padStart(2, '0');
+        const d = String(today.getDate()).padStart(2, '0');
+        const yyyyMmDd = `${y}-${m}-${d}`;
+        const key = `problemsSolved:${yyyyMmDd}`;
+        const val = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+        setProblemsToday(val);
+      } catch (e) {
+        setProblemsToday(0);
+      }
+    };
+
+    aggregateToday();
+    readStreak();
+    readProblemsToday();
+
+    // Optionally refresh every 15s while dashboard is open
+    const interval = setInterval(() => { aggregateToday(); readStreak(); readProblemsToday(); }, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Get user's display name
   const getDisplayName = () => {
@@ -275,7 +335,7 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 font-medium">Current Streak</p>
-                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                    <p className="text-2xl font-bold text-home-foreground">{streakCount}</p>
                   </div>
                 </div>
               </Card>
@@ -288,7 +348,7 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 font-medium">Minutes Today</p>
-                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                    <p className="text-2xl font-bold text-home-foreground">{minutesToday}</p>
                   </div>
                 </div>
               </Card>
@@ -301,20 +361,7 @@ const Dashboard = () => {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 font-medium">Problems Solved</p>
-                    <p className="text-2xl font-bold text-home-foreground">-</p>
-                  </div>
-                </div>
-              </Card>
-              
-              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-purple-500/10 via-white/50 to-purple-500/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                <div className="relative z-10 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-purple-500/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <Users className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600 font-medium">Sessions Joined</p>
-                    <p className="text-2xl font-bold text-home-foreground">-</p>
+                    <p className="text-2xl font-bold text-home-foreground">{problemsToday}</p>
                   </div>
                 </div>
               </Card>

@@ -37,13 +37,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import SettingsModal from "@/components/SettingsModal";
 import { FriendChat } from "@/components/FriendChat";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 interface Profile {
   first_name: string | null;
@@ -89,6 +90,7 @@ const Friends = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [friendsWithMetrics, setFriendsWithMetrics] = useState<FriendWithMetrics[]>([]);
+  const [presenceState, setPresenceState] = useState<Record<string, { status: string; updatedAt?: string }>>({});
   const [searchUsername, setSearchUsername] = useState("");
   const [searchedUser, setSearchedUser] = useState<SearchedUser | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -164,7 +166,7 @@ const Friends = () => {
             profilesData.map(async (profile) => {
               const { data: metricsData } = await supabase
                 .from('daily_metrics')
-                .select('problems_completed, minutes_studied')
+                .select('date, problems_completed, minutes_studied')
                 .eq('user_id', profile.id)
                 .order('date', { ascending: false })
                 .limit(7); // Last 7 days
@@ -236,6 +238,134 @@ const Friends = () => {
     initializeUser();
   }, [navigate]);
 
+  // Presence tracking (online vs studying)
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    const updatePresenceState = () => {
+      if (!channel) return;
+      const state = channel.presenceState();
+      const next: Record<string, { status: string; updatedAt?: string }> = {};
+      Object.entries(state).forEach(([key, sessions]) => {
+        const metas = sessions as Array<{ status?: string; updatedAt?: string }>;
+        if (!metas?.length) return;
+        const sorted = metas.slice().sort((a, b) => {
+          const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return bTime - aTime;
+        });
+        const latest = sorted[0];
+        if (latest?.status) {
+          next[key] = { status: latest.status, updatedAt: latest.updatedAt };
+        }
+      });
+      setPresenceState(next);
+    };
+
+    const setup = async () => {
+      try {
+        channel = supabase.channel('user-presence', {
+          config: { presence: { key: user.id } },
+        });
+
+        const trackStatus = async (status: 'online' | 'offline') => {
+          try {
+            await channel?.track({ status, updatedAt: new Date().toISOString() });
+          } catch (error) {
+            console.warn('[Friends] Failed to track presence', error);
+          }
+        };
+
+        channel.on('presence', { event: 'sync' }, updatePresenceState);
+
+        channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await trackStatus('online');
+          }
+        });
+
+        const handleBeforeUnload = () => {
+          void trackStatus('offline');
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+          window.removeEventListener('beforeunload', handleBeforeUnload);
+          void trackStatus('offline');
+        };
+      } catch (error) {
+        console.warn('[Friends] Failed to setup presence tracking', error);
+      }
+    };
+
+    let teardown: (() => void) | void;
+    setup().then((cleanup) => {
+      teardown = cleanup;
+    });
+
+    return () => {
+      cancelled = true;
+      teardown?.();
+      channel?.unsubscribe();
+      channel = null;
+    };
+  }, [user]);
+
+  const isToday = (iso?: string | null) => {
+    if (!iso) return false;
+    const date = new Date(iso);
+    const now = new Date();
+    return (
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate()
+    );
+  };
+
+  const isRecent = (iso?: string | null, days = 2) => {
+    if (!iso) return false;
+    const date = new Date(iso);
+    const now = new Date();
+    const diff = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+    return diff <= days;
+  };
+
+  const getFriendStatus = (friend: FriendWithMetrics) => {
+    const presence = presenceState[friend.friend_id]?.status;
+    if (presence === 'studying' || presence === 'online') {
+      return presence as 'studying' | 'online';
+    }
+    if (presence === 'offline') {
+      return 'offline';
+    }
+
+    const latestMetric = friend.daily_metrics?.[0] as
+      | { date?: string | null; minutes_studied?: number | null }
+      | undefined;
+    if (latestMetric && isToday(latestMetric.date) && (latestMetric.minutes_studied || 0) > 0) {
+      return 'studying';
+    }
+    if (latestMetric && isRecent(latestMetric.date, 7)) {
+      return 'online';
+    }
+    return 'offline';
+  };
+
+  const statusSummary = useMemo(() => {
+    const summary = { studying: 0, online: 0, offline: 0 };
+    friendsWithMetrics.forEach((friend) => {
+      const status = getFriendStatus(friend);
+      if (status in summary) {
+        summary[status as keyof typeof summary] += 1;
+      }
+    });
+    return summary;
+  }, [friendsWithMetrics, presenceState]);
+
   const getInitials = (firstName?: string | null, lastName?: string | null, email?: string) => {
     if (firstName && lastName) {
       return `${firstName[0]}${lastName[0]}`.toUpperCase();
@@ -252,6 +382,8 @@ const Friends = () => {
   const getMyInitials = () => {
     return getInitials(profile?.first_name, profile?.last_name, user?.email);
   };
+
+  const totalFriends = friendsWithMetrics.length;
 
   // Calculate leaderboard with scores
   const leaderboard = friendsWithMetrics
@@ -505,13 +637,25 @@ const Friends = () => {
     }
   };
 
-  // Mock data - will be replaced with real data from Supabase
-  const friends: any[] = [];
-
   const friendRequests: any[] = [];
 
-  const onlineFriends = friends.filter(f => f.status === "online").length;
-  const studyingFriends = friends.filter(f => f.status === "studying").length;
+  const statusStyles: Record<string, { label: string; badge: string; dot: string }> = {
+    studying: {
+      label: 'Studying',
+      badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
+      dot: 'bg-yellow-500',
+    },
+    online: {
+      label: 'Online',
+      badge: 'bg-green-100 text-green-800 border border-green-200',
+      dot: 'bg-green-500',
+    },
+    offline: {
+      label: 'Offline',
+      badge: 'bg-gray-100 text-gray-600 border border-gray-200',
+      dot: 'bg-gray-400',
+    },
+  };
 
   return (
     <div className="min-h-screen bg-home-background font-lexend">
@@ -872,6 +1016,8 @@ const Friends = () => {
                   {friendsWithMetrics.map((friend) => {
                     const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + day.problems_completed, 0) || 0;
                     const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + day.minutes_studied, 0) || 0;
+                    const status = getFriendStatus(friend);
+                    const statusConfig = statusStyles[status] ?? statusStyles.offline;
                     
                     return (
                       <div key={friend.friend_id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
@@ -888,6 +1034,10 @@ const Friends = () => {
                               <h3 className="font-medium text-home-foreground truncate">
                                 {`${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email}
                               </h3>
+                              <Badge className={`flex items-center gap-2 ${statusConfig.badge}`}>
+                                <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`}></span>
+                                {statusConfig.label}
+                              </Badge>
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
@@ -1045,20 +1195,27 @@ const Friends = () => {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Total Friends</span>
-                  <span className="font-semibold text-home-foreground">{friends.length}</span>
+                  <span className="font-semibold text-home-foreground">{totalFriends}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Online Now</span>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span className="font-semibold text-home-foreground">{onlineFriends}</span>
+                    <span className="font-semibold text-home-foreground">{statusSummary.online}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-600">Currently Studying</span>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                    <span className="font-semibold text-home-foreground">{studyingFriends}</span>
+                    <span className="font-semibold text-home-foreground">{statusSummary.studying}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Offline</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                    <span className="font-semibold text-home-foreground">{statusSummary.offline}</span>
                   </div>
                 </div>
               </div>

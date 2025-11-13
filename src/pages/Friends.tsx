@@ -25,6 +25,7 @@ import {
   Trophy,
   Zap,
   BookUp,
+  Brain,
   CheckCircle,
   XCircle,
   ChevronDown,
@@ -63,9 +64,16 @@ interface FriendWithMetrics {
     email: string;
   };
   daily_metrics?: {
+    date?: string | null;
     problems_completed: number;
     minutes_studied: number;
   }[];
+  user_stats?: {
+    lifetime_minutes_studied: number;
+    lifetime_questions_answered: number;
+    longest_streak: number;
+    current_streak: number;
+  };
 }
 
 // Username validation schema
@@ -103,6 +111,104 @@ const Friends = () => {
   const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
+    let friendsInterval: number | undefined;
+
+    const fetchFriendsData = async (userId: string) => {
+      try {
+        const { data: friendsData, error: friendsError } = await supabase
+          .from('friends')
+          .select('user_id, friend_id')
+          .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+          .eq('status', 'accepted');
+
+        if (friendsError) {
+          console.warn('[Friends] Error fetching accepted friends:', friendsError);
+          setFriendsWithMetrics([]);
+          return;
+        }
+
+        if (!friendsData || friendsData.length === 0) {
+          setFriendsWithMetrics([]);
+          return;
+        }
+
+        const friendIds = Array.from(new Set(friendsData.map(f => 
+          f.user_id === userId ? f.friend_id : f.user_id
+        )));
+
+        if (friendIds.length === 0) {
+          setFriendsWithMetrics([]);
+          return;
+        }
+
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, image_url, email')
+          .in('id', friendIds);
+
+        if (profilesError) {
+          console.warn('[Friends] Error fetching friend profiles:', profilesError);
+          return;
+        }
+
+        if (!profilesData || profilesData.length === 0) {
+          setFriendsWithMetrics([]);
+          return;
+        }
+
+        const { data: statsData, error: statsError } = await supabase
+          .from('user_stats')
+          .select('user_id, lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+          .in('user_id', friendIds);
+
+        if (statsError) {
+          console.warn('[Friends] Error fetching user stats:', statsError);
+        }
+
+        const statsMap = new Map<string, {
+          lifetime_minutes_studied: number;
+          lifetime_questions_answered: number;
+          longest_streak: number;
+          current_streak: number;
+        }>();
+
+        statsData?.forEach((stat) => {
+          statsMap.set(stat.user_id, {
+            lifetime_minutes_studied: stat.lifetime_minutes_studied ?? 0,
+            lifetime_questions_answered: stat.lifetime_questions_answered ?? 0,
+            longest_streak: stat.longest_streak ?? 0,
+            current_streak: stat.current_streak ?? 0,
+          });
+        });
+
+        const friendsWithMetricsData = await Promise.all(
+          profilesData.map(async (profile) => {
+            const { data: metricsData, error: metricsError } = await supabase
+              .from('daily_metrics')
+              .select('date, problems_completed, minutes_studied')
+              .eq('user_id', profile.id)
+              .order('date', { ascending: false })
+              .limit(7);
+
+            if (metricsError) {
+              console.warn('[Friends] Error fetching metrics for friend', profile.id, metricsError);
+            }
+
+            return {
+              friend_id: profile.id,
+              profiles: profile,
+              daily_metrics: metricsData || [],
+              user_stats: statsMap.get(profile.id)
+            };
+          })
+        );
+
+        setFriendsWithMetrics(friendsWithMetricsData);
+      } catch (error) {
+        console.error('[Friends] Unexpected error fetching friends data:', error);
+      }
+    };
+
     const initializeUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -120,7 +226,6 @@ const Friends = () => {
         .maybeSingle();
 
       if (!profileData && !error) {
-        // No profile exists, create one
         const { error: createError } = await supabase
           .from('profiles')
           .insert({
@@ -132,56 +237,18 @@ const Friends = () => {
           });
 
         if (!createError) {
-          // Fetch the newly created profile
           const { data: newProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        setProfile(newProfile);
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          setProfile(newProfile);
         }
       } else if (profileData) {
         setProfile(profileData);
       }
 
-      // Fetch friends with their metrics
-      const { data: friendsData, error: friendsError } = await supabase
-        .from('friends')
-        .select('friend_id')
-        .eq('user_id', session.user.id)
-        .eq('status', 'accepted');
-
-      if (friendsData && !friendsError && friendsData.length > 0) {
-        const friendIds = friendsData.map(f => f.friend_id);
-        
-        // Fetch profiles for all friends
-        const { data: profilesData } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, image_url, email')
-          .in('id', friendIds);
-
-        if (profilesData) {
-          // Fetch metrics for each friend
-          const friendsWithMetricsData = await Promise.all(
-            profilesData.map(async (profile) => {
-              const { data: metricsData } = await supabase
-                .from('daily_metrics')
-                .select('date, problems_completed, minutes_studied')
-                .eq('user_id', profile.id)
-                .order('date', { ascending: false })
-                .limit(7); // Last 7 days
-
-              return {
-                friend_id: profile.id,
-                profiles: profile,
-                daily_metrics: metricsData || []
-              };
-            })
-          );
-
-          setFriendsWithMetrics(friendsWithMetricsData);
-        }
-      }
+      await fetchFriendsData(session.user.id);
 
       // Fetch incoming friend requests (where current user is the friend_id)
       const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
@@ -191,24 +258,21 @@ const Friends = () => {
         .eq('status', 'pending');
 
       if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
-        console.log('Found incoming friend requests:', incomingFriendsData);
         const userIds = incomingFriendsData.map(req => req.user_id);
         const { data: incomingProfilesData } = await supabase
           .from('profiles')
           .select('id, username, first_name, last_name, image_url, email')
           .in('id', userIds);
 
-        console.log('Found incoming profiles:', incomingProfilesData);
         if (incomingProfilesData) {
           const incomingRequests = incomingFriendsData.map(friends => {
             const profile = incomingProfilesData.find(p => p.id === friends.user_id);
             return { ...friends, profiles: profile };
           });
-          console.log('Setting incoming requests:', incomingRequests);
           setIncomingRequests(incomingRequests);
         }
-      } else {
-        console.log('No incoming friend requests found or error:', { incomingFriendsData, incomingFriendsError });
+      } else if (incomingFriendsError) {
+        console.warn('[Friends] Incoming friend requests error:', incomingFriendsError);
       }
 
       // Fetch outgoing friend requests (where current user is the user_id)
@@ -233,9 +297,28 @@ const Friends = () => {
           setOutgoingRequests(outgoingRequests);
         }
       }
+
+      friendsInterval = window.setInterval(() => {
+        void fetchFriendsData(session.user.id);
+      }, 60000);
     };
 
-    initializeUser();
+    void initializeUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        navigate('/auth');
+      } else {
+        setUser(session.user);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      if (friendsInterval) {
+        window.clearInterval(friendsInterval);
+      }
+    };
   }, [navigate]);
 
   // Presence tracking (online vs studying)
@@ -309,7 +392,9 @@ const Friends = () => {
 
     return () => {
       cancelled = true;
-      teardown?.();
+      if (typeof teardown === 'function') {
+        teardown();
+      }
       channel?.unsubscribe();
       channel = null;
     };
@@ -388,18 +473,25 @@ const Friends = () => {
   // Calculate leaderboard with scores
   const leaderboard = friendsWithMetrics
     .map(friend => {
-      const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + day.problems_completed, 0) || 0;
-      const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + day.minutes_studied, 0) || 0;
-      // Equal weighting: average of both metrics
-      const score = (totalProblems + totalMinutes) / 2;
+      const totalProblemsLast7 = friend.daily_metrics?.reduce((sum, day) => sum + (day.problems_completed || 0), 0) || 0;
+      const totalMinutesLast7 = friend.daily_metrics?.reduce((sum, day) => sum + (day.minutes_studied || 0), 0) || 0;
+      const lifetimeMinutes = friend.user_stats?.lifetime_minutes_studied ?? totalMinutesLast7;
+      const lifetimeProblems = friend.user_stats?.lifetime_questions_answered ?? totalProblemsLast7;
+      const longestStreak = friend.user_stats?.longest_streak ?? 0;
+      const currentStreak = friend.user_stats?.current_streak ?? 0;
+      const score = (lifetimeProblems + lifetimeMinutes) / 2;
       
       return {
         id: friend.friend_id,
         name: `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email,
         image_url: friend.profiles.image_url,
         initials: getInitials(friend.profiles.first_name, friend.profiles.last_name, friend.profiles.email),
-        totalProblems,
-        totalMinutes,
+        totalProblemsLast7,
+        totalMinutesLast7,
+        lifetimeMinutes,
+        lifetimeProblems,
+        longestStreak,
+        currentStreak,
         score
       };
     })
@@ -939,16 +1031,23 @@ const Friends = () => {
                           {/* Friend Info */}
                           <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-home-foreground text-lg truncate">{friend.name}</h3>
-                            <div className="flex items-center gap-4 mt-1">
-                              <div className="flex items-center gap-1 text-sm">
-                                <Trophy className="w-4 h-4 text-orange-500" />
-                                <span className="font-semibold text-orange-600">{friend.totalProblems}</span>
-                                <span className="text-gray-500">problems</span>
+                            <div className="mt-1 text-xs text-gray-600 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Brain className="w-3 h-3 text-purple-500" />
+                                <span className="font-semibold text-purple-600">{friend.lifetimeProblems}</span>
+                                <span className="text-gray-500">lifetime problems</span>
                               </div>
-                              <div className="flex items-center gap-1 text-sm">
-                                <Clock className="w-4 h-4 text-blue-500" />
-                                <span className="font-semibold text-blue-600">{friend.totalMinutes}</span>
-                                <span className="text-gray-500">min</span>
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-3 h-3 text-blue-500" />
+                                <span className="font-semibold text-blue-600">{friend.lifetimeMinutes}</span>
+                                <span className="text-gray-500">lifetime mins</span>
+                              </div>
+                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+                                <span>Last 7 days: {friend.totalProblemsLast7} problems</span>
+                                <span>{friend.totalMinutesLast7} mins</span>
+                                {(friend.currentStreak > 0 || friend.longestStreak > 0) && (
+                                  <span>Streaks: {friend.currentStreak} current / {friend.longestStreak} best</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1014,8 +1113,12 @@ const Friends = () => {
               {friendsWithMetrics.length > 0 ? (
                 <div className="grid md:grid-cols-2 gap-4">
                   {friendsWithMetrics.map((friend) => {
-                    const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + day.problems_completed, 0) || 0;
-                    const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + day.minutes_studied, 0) || 0;
+                    const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + (day.problems_completed || 0), 0) || 0;
+                    const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + (day.minutes_studied || 0), 0) || 0;
+                    const lifetimeMinutes = friend.user_stats?.lifetime_minutes_studied ?? 0;
+                    const lifetimeQuestions = friend.user_stats?.lifetime_questions_answered ?? 0;
+                    const longestStreak = friend.user_stats?.longest_streak ?? 0;
+                    const currentStreak = friend.user_stats?.current_streak ?? 0;
                     const status = getFriendStatus(friend);
                     const statusConfig = statusStyles[status] ?? statusStyles.offline;
                     
@@ -1054,13 +1157,24 @@ const Friends = () => {
                             <div className="space-y-2">
                               <div className="flex items-center gap-4 text-xs text-gray-600">
                                 <div className="flex items-center gap-1">
-                                  <BookUp className="w-3 h-3 text-blue-500" />
+                                  <Brain className="w-3 h-3 text-purple-500" />
                                   <span>{totalProblems} problems</span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Clock className="w-3 h-3 text-green-500" />
                                   <span>{totalMinutes} mins</span>
                                 </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+                                <span>Lifetime: {lifetimeQuestions} problems</span>
+                                <span>|</span>
+                                <span>{lifetimeMinutes} mins</span>
+                                {(longestStreak > 0 || currentStreak > 0) && (
+                                  <>
+                                    <span>|</span>
+                                    <span>Streaks: {currentStreak} current / {longestStreak} best</span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>

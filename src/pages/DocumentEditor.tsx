@@ -4,7 +4,7 @@ import { exportToCanvas } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, Camera, X, Download, Sparkles, Plus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { FriendChat } from '@/components/FriendChat';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -274,6 +274,55 @@ export const MathText: React.FC<MathTextProps> = ({ text, className = '' }) => {
   );
 };
 
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const shiftDateString = (dateStr: string, offset: number) => {
+  const date = new Date(`${dateStr}T00:00:00`);
+  date.setDate(date.getDate() + offset);
+  return formatLocalDate(date);
+};
+
+const calculateCurrentStreakFromDates = (activeDates: Set<string>) => {
+  let current = 0;
+  let cursor = formatLocalDate(new Date());
+
+  while (activeDates.has(cursor)) {
+    current += 1;
+    cursor = shiftDateString(cursor, -1);
+  }
+
+  return current;
+};
+
+const calculateLongestStreakFromDates = (activeDates: Set<string>) => {
+  let longest = 0;
+
+  activeDates.forEach((dateStr) => {
+    const previous = shiftDateString(dateStr, -1);
+    if (activeDates.has(previous)) {
+      return;
+    }
+
+    let length = 0;
+    let cursor = dateStr;
+    while (activeDates.has(cursor)) {
+      length += 1;
+      cursor = shiftDateString(cursor, 1);
+    }
+
+    if (length > longest) {
+      longest = length;
+    }
+  });
+
+  return longest;
+};
+
 interface Friend {
   id: string;
   first_name: string | null;
@@ -308,6 +357,8 @@ const DocumentEditor: React.FC = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [currentChatFriend, setCurrentChatFriend] = useState<Friend | null>(null);
   const [showFriendChat, setShowFriendChat] = useState(false);
+  const [friendMessages, setFriendMessages] = useState<Array<{ id: string; sender_id: string; receiver_id: string; message: string; created_at: string; read_at: string | null }>>([]);
+  const [pendingFriendAttachment, setPendingFriendAttachment] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [chatPosition, setChatPosition] = useState({ x: 50, y: window.innerHeight - 120 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -329,11 +380,10 @@ const DocumentEditor: React.FC = () => {
   const [lastActivityTime, setLastActivityTime] = useState<number>(Date.now());
   const [isTimerActive, setIsTimerActive] = useState(true);
   const [isTimerMinimized, setIsTimerMinimized] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const lastSyncedMetricsRef = useRef<{ date: string; minutes: number; problems: number } | null>(null);
   
-  // Capture state
-  const [showCapturePanel, setShowCapturePanel] = useState(false);
-  const [isCapturePanelMinimized, setIsCapturePanelMinimized] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  // Capture preview state removed
 
   // Load saved timer data on component mount
   useEffect(() => {
@@ -391,6 +441,179 @@ const DocumentEditor: React.FC = () => {
     }
   }, [fileId]);
 
+  useEffect(() => {
+    const loadCurrentUser = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.error('[DocumentEditor] Error loading user for metrics sync:', error);
+          return;
+        }
+
+        const user = data?.user;
+        if (!user) {
+          navigate('/auth');
+          return;
+        }
+
+        setCurrentUserId(user.id);
+      } catch (err) {
+        console.error('[DocumentEditor] Unexpected error loading user for metrics sync:', err);
+      }
+    };
+
+    void loadCurrentUser();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+
+    const captureChannel = new BroadcastChannel('whiteboard-capture');
+
+    captureChannel.onmessage = async (event) => {
+      const payload = event.data as { type?: string; requestId?: string };
+      if (!payload || payload.type !== 'capture-request' || !payload.requestId) return;
+
+      try {
+        const elements = excalidrawAPI.getSceneElements?.() || [];
+        const appState = excalidrawAPI.getAppState?.() || {};
+        const canvas = await exportToCanvas({
+          elements,
+          appState,
+          files: excalidrawAPI.getFiles?.() || {},
+        });
+        const dataURL = canvas.toDataURL('image/png');
+        captureChannel.postMessage({ requestId: payload.requestId, image: dataURL });
+      } catch (error) {
+        console.error('[DocumentEditor] Failed to capture whiteboard for attachment:', error);
+        captureChannel.postMessage({ requestId: payload.requestId, error: 'Unable to capture whiteboard preview.' });
+      }
+    };
+
+    return () => {
+      captureChannel.close();
+    };
+  }, [excalidrawAPI]);
+
+  const syncDailyMetrics = React.useCallback(async () => {
+    if (!currentUserId) {
+      return;
+    }
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const dateKey = `${year}-${month}-${day}`;
+      const suffix = `:${dateKey}`;
+
+      let totalSeconds = 0;
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (!key) continue;
+        if (key.startsWith('studySeconds:') && key.endsWith(suffix)) {
+          const value = parseInt(localStorage.getItem(key) || '0', 10);
+          if (!Number.isNaN(value)) {
+            totalSeconds += value;
+          }
+        }
+      }
+
+      const minutesStudied = Math.floor(totalSeconds / 60);
+      let problemsSolved = parseInt(localStorage.getItem(`problemsSolved:${dateKey}`) || '0', 10);
+      if (Number.isNaN(problemsSolved)) {
+        problemsSolved = 0;
+      }
+
+      const lastSynced = lastSyncedMetricsRef.current;
+      if (
+        lastSynced &&
+        lastSynced.date === dateKey &&
+        lastSynced.minutes === minutesStudied &&
+        lastSynced.problems === problemsSolved
+      ) {
+        return;
+      }
+
+      const { error } = await supabase
+        .from('daily_metrics')
+        .upsert(
+          {
+            user_id: currentUserId,
+            date: dateKey,
+            minutes_studied: minutesStudied,
+            problems_completed: problemsSolved,
+          },
+          { onConflict: 'user_id,date' }
+        );
+
+      if (error) {
+        console.error('[DocumentEditor] Failed to sync daily metrics:', error);
+        return;
+      }
+
+      const { data: allMetrics, error: allMetricsError } = await supabase
+        .from('daily_metrics')
+        .select('date, minutes_studied, problems_completed')
+        .eq('user_id', currentUserId);
+
+      if (allMetricsError) {
+        console.error('[DocumentEditor] Failed to load metrics for lifetime sync:', allMetricsError);
+      } else if (allMetrics) {
+        let lifetimeMinutes = 0;
+        let lifetimeProblems = 0;
+        const activeDates = new Set<string>();
+        let lastStudyDate: string | null = null;
+
+        allMetrics.forEach((metric) => {
+          const minutes = metric.minutes_studied ?? 0;
+          const problems = metric.problems_completed ?? 0;
+          lifetimeMinutes += minutes;
+          lifetimeProblems += problems;
+          if (minutes > 0 || problems > 0) {
+            if (metric.date) {
+              activeDates.add(metric.date);
+              if (!lastStudyDate || metric.date > lastStudyDate) {
+                lastStudyDate = metric.date;
+              }
+            }
+          }
+        });
+
+        const currentStreak = calculateCurrentStreakFromDates(activeDates);
+        const historicalLongest = calculateLongestStreakFromDates(activeDates);
+        const longestStreak = Math.max(historicalLongest, currentStreak);
+
+        const { error: statsError } = await supabase
+          .from('user_stats')
+          .upsert(
+            {
+              user_id: currentUserId,
+              lifetime_minutes_studied: lifetimeMinutes,
+              lifetime_questions_answered: lifetimeProblems,
+              longest_streak: longestStreak,
+              current_streak: currentStreak,
+              last_study_date: lastStudyDate,
+            },
+            { onConflict: 'user_id' }
+          );
+
+        if (statsError) {
+          console.error('[DocumentEditor] Failed to update user_stats:', statsError);
+        }
+      }
+
+      lastSyncedMetricsRef.current = { date: dateKey, minutes: minutesStudied, problems: problemsSolved };
+    } catch (error) {
+      console.error('[DocumentEditor] Error syncing study metrics:', error);
+    }
+  }, [currentUserId]);
+
   // Cleanup when component unmounts (user navigates away)
   useEffect(() => {
     return () => {
@@ -401,8 +624,36 @@ const DocumentEditor: React.FC = () => {
         const currentTotal = totalStudyTime + sessionTime;
         localStorage.setItem(`studyTime_${fileId}`, currentTotal.toString());
       }
+      void syncDailyMetrics();
     };
-  }, [sessionStartTime, isTimerActive, totalStudyTime, fileId]);
+  }, [sessionStartTime, isTimerActive, totalStudyTime, fileId, syncDailyMetrics]);
+
+  useEffect(() => {
+    if (currentUserId) {
+      void syncDailyMetrics();
+    }
+  }, [currentUserId, syncDailyMetrics]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void syncDailyMetrics();
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [currentUserId, syncDailyMetrics]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+    const handleBeforeUnload = () => {
+      void syncDailyMetrics();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentUserId, syncDailyMetrics]);
 
   // Activity tracking and timer logic
   useEffect(() => {
@@ -1022,8 +1273,9 @@ const DocumentEditor: React.FC = () => {
     if (!question) {
       return;
     }
-    
-    // Always capture a fresh snapshot of the current workspace
+
+    let dataURL: string | null = null;
+
     if (excalidrawAPI) {
       try {
         const elements = excalidrawAPI.getSceneElements();
@@ -1033,14 +1285,18 @@ const DocumentEditor: React.FC = () => {
           appState,
           files: excalidrawAPI.getFiles(),
         });
-        const dataURL = canvas.toDataURL("image/png");
-        await sendMessageWithImage(question, dataURL);
-        return;
+        dataURL = canvas.toDataURL("image/png");
       } catch (error) {
         console.error('Error capturing scene:', error);
-        return;
       }
     }
+
+    if (!dataURL) {
+      console.warn('[DocumentEditor] Unable to capture whiteboard for chat message.');
+      return;
+    }
+
+    await sendMessageWithImage(question, dataURL);
   };
 
   const sendMessageWithImage = async (question: string, imageDataURL: string) => {
@@ -1149,47 +1405,26 @@ const DocumentEditor: React.FC = () => {
         const canvas = await exportToCanvas({ elements, appState, files });
         const dataURL = canvas.toDataURL('image/png');
 
-        await supabase.from('friend_messages').insert({
-          sender_id: user.id,
-          receiver_id: friend.id,
-          message: dataURL,
-        });
+        setPendingFriendAttachment(dataURL);
+
+        const { data: messagesData, error: messagesError } = await supabase
+          .from('friend_messages')
+          .select('*')
+          .in('sender_id', [user.id, friend.id])
+          .in('receiver_id', [user.id, friend.id])
+          .order('created_at', { ascending: true });
+
+        if (!messagesError && messagesData) {
+          setFriendMessages(messagesData);
+        } else if (messagesError) {
+          console.warn('[DocumentEditor] Failed to load friend messages:', messagesError);
+          setFriendMessages([]);
+        }
       }
     } catch (e) {
       console.warn('Failed to initiate friend chat:', e);
+      setPendingFriendAttachment(null);
     }
-  };
-
-  const handleCaptureScene = async () => {
-    if (!excalidrawAPI) return;
-    
-    try {
-      // Get the current scene data
-      const elements = excalidrawAPI.getSceneElements();
-      const appState = excalidrawAPI.getAppState();
-      
-      // Export to canvas
-      const canvas = await exportToCanvas({
-        elements,
-        appState,
-        files: excalidrawAPI.getFiles(),
-      });
-      
-      const dataURL = canvas.toDataURL("image/png");
-      setCapturedImage(dataURL);
-      setShowCapturePanel(true);
-    } catch (error) {
-      console.error('Error capturing scene:', error);
-    }
-  };
-
-  const handleSaveCapturedImage = () => {
-    if (!capturedImage) return;
-    
-    const link = document.createElement("a");
-    link.download = `markit-capture-${Date.now()}.png`;
-    link.href = capturedImage;
-    link.click();
   };
 
   const summarizeToSteps = (text: string) => text.trim();
@@ -1321,6 +1556,7 @@ const DocumentEditor: React.FC = () => {
       const key = `problemsSolved:${yyyyMmDd}`;
       const prev = parseInt(localStorage.getItem(key) || '0', 10) || 0;
       localStorage.setItem(key, String(prev + 1));
+      void syncDailyMetrics();
     } catch (e) {
       // ignore
     }
@@ -1521,27 +1757,8 @@ const DocumentEditor: React.FC = () => {
         </div>
       )}
 
-            {/* Toggle Chat Input and Camera Panel Buttons */}
+            {/* Toggle Chat Input Button */}
             <div className="absolute top-4 right-4 z-50 flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (showCapturePanel) {
-                    // If panel is open, close it
-                    setShowCapturePanel(false);
-                    setIsCapturePanelMinimized(false);
-                  } else {
-                    // If panel is closed, open it
-                    setShowCapturePanel(true);
-                    setIsCapturePanelMinimized(false);
-                  }
-                }}
-                className={`bg-white shadow-md ${showCapturePanel ? 'bg-blue-50 border-blue-300' : ''}`}
-                title={showCapturePanel ? "Close camera panel" : "Open camera panel"}
-              >
-                <Camera className="w-4 h-4" />
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -1610,7 +1827,7 @@ const DocumentEditor: React.FC = () => {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder={capturedImage ? "Ask a question about the whiteboard..." : "Ask a question..."}
+                placeholder="Ask a question about the whiteboard..."
                 className="bg-transparent text-gray-200 placeholder-gray-400 flex-1 outline-none text-sm ml-8"
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
@@ -1749,118 +1966,6 @@ const DocumentEditor: React.FC = () => {
         )}
       </div>
 
-      {/* Capture Panel Sidebar */}
-      {showCapturePanel && (
-        <div className={`absolute right-0 top-0 bottom-0 bg-white/95 backdrop-blur-sm shadow-xl border-l border-gray-200 z-50 flex flex-col transition-all duration-300 overflow-hidden ${isCapturePanelMinimized ? 'w-16' : 'w-96'}`}>
-          {/* Header */}
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              {!isCapturePanelMinimized && (
-                <div className="flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-gray-700" />
-                  <h3 className="font-semibold text-gray-900">Captured Scene</h3>
-                </div>
-              )}
-              <div className="flex items-center gap-2 ml-auto">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setIsCapturePanelMinimized(!isCapturePanelMinimized)}
-                  className="h-8 w-8 p-0"
-                  title={isCapturePanelMinimized ? "Expand" : "Minimize"}
-                >
-                  {isCapturePanelMinimized ? (
-                    <Camera className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => {
-                    setShowCapturePanel(false);
-                    setIsCapturePanelMinimized(false);
-                  }}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          
-          {/* Capture Button in Sidebar */}
-          {!isCapturePanelMinimized && (
-            <div className="p-4 border-b border-gray-200">
-              <Button
-                variant="default"
-                onClick={handleCaptureScene}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Camera className="w-4 h-4 mr-2" />
-                Capture Whiteboard
-              </Button>
-            </div>
-          )}
-          
-          {isCapturePanelMinimized && (
-            <div className="p-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCaptureScene}
-                className="w-full"
-                title="Capture whiteboard"
-              >
-                <Camera className="w-5 h-5" />
-              </Button>
-            </div>
-          )}
-          
-          {/* Captured Image Preview */}
-          {!isCapturePanelMinimized && (
-            <div className="flex-1 p-4 overflow-y-auto min-h-0">
-              {capturedImage ? (
-                <div className="space-y-4">
-                <div className="relative">
-                  <img 
-                    src={capturedImage} 
-                    alt="Captured whiteboard"
-                    className="w-full h-auto rounded-lg border border-gray-200 shadow-sm"
-                  />
-                </div>
-                
-                <div className="flex flex-col gap-2">
-                  <Button 
-                    variant="default"
-                    onClick={handleSaveCapturedImage}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download Image
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      setShowCapturePanel(false);
-                    }}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Camera className="w-12 h-12 mx-auto mb-4 text-gray-400 opacity-50" />
-                  <p className="text-sm text-gray-500">No capture available</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Chat Sidebar (AI only) */}
       {showChatSidebar && (
         <div className="absolute right-0 top-0 bottom-0 w-96 bg-white/95 backdrop-blur-sm shadow-xl border-l border-gray-200 z-[100] flex flex-col transition-all duration-300 overflow-hidden">
@@ -1961,7 +2066,7 @@ const DocumentEditor: React.FC = () => {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder={chatMessages.length === 0 ? "Ask a question..." : "Ask a follow-up question..."}
+                placeholder={chatMessages.length === 0 ? "Ask a question about the whiteboard..." : "Ask a follow-up question..."}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isChatLoading}
               />
@@ -2008,7 +2113,15 @@ const DocumentEditor: React.FC = () => {
         <FriendChat
           friendId={currentChatFriend.id}
           friendName={getDisplayName(currentChatFriend)}
-          onClose={() => setShowFriendChat(false)}
+          initialMessages={friendMessages}
+          attachment={pendingFriendAttachment}
+          onClearAttachment={() => setPendingFriendAttachment(null)}
+          canAttachWhiteboard={true}
+          onClose={() => {
+            setShowFriendChat(false);
+            setPendingFriendAttachment(null);
+            setFriendMessages([]);
+          }}
         />
       )}
     </div>

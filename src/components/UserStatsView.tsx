@@ -69,12 +69,13 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
       `}
     >
       <div className="flex items-center gap-3">
-        <div className={`
-          p-3 rounded-full 
-          bg-gradient-to-br from-primary/20 to-secondary/20
-          ${getGradientIntensity()}
-          transition-all duration-300
-        `}>
+        <div
+          className={`
+            p-3 rounded-full bg-muted/40
+            ${getGradientIntensity()}
+            transition-all duration-300
+          `}
+        >
           {icon}
         </div>
         <div className="flex-1">
@@ -89,10 +90,10 @@ const StatCard = ({ icon, label, value, isEmpty, emptyMessage }: StatCardProps) 
       {!isEmpty && typeof value === 'number' && value > 0 && (
         <div className="mt-3">
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-1000"
-              style={{ 
-                width: `${Math.min((value % 100) / 100 * 100, 100)}%` 
+            <div
+              className="h-full bg-primary transition-all duration-1000"
+              style={{
+                width: `${Math.min((value % 100) / 100 * 100, 100)}%`
               }}
             />
           </div>

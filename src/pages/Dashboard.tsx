@@ -4,13 +4,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   BookOpen, 
-  Users, 
   Plus, 
   MessageSquare, 
   Clock,
   Zap,
   Trophy,
-  Calendar,
   Settings,
   Bell,
   File,
@@ -39,11 +37,19 @@ interface UploadedFile {
   created_at: string;
 }
 
+interface ProblemSet {
+  id: string;
+  title: string;
+  problem_count: number;
+  created_at: string;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
+  const [recentProblemSets, setRecentProblemSets] = useState<ProblemSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [minutesToday, setMinutesToday] = useState<number>(0);
@@ -149,12 +155,16 @@ const Dashboard = () => {
           // Keys look like: studySeconds:<fileId>:YYYY-MM-DD
           if (key.startsWith('studySeconds:') && key.endsWith(`:${yyyyMmDd}`)) {
             const val = parseInt(localStorage.getItem(key) || '0', 10);
-            if (!isNaN(val)) totalSeconds += val;
+            if (!isNaN(val)) {
+              totalSeconds += val;
+            }
           }
         }
-        setMinutesToday(Math.floor(totalSeconds / 60));
+        const minutes = Math.floor(totalSeconds / 60);
+        setMinutesToday(minutes);
       } catch (e) {
         setMinutesToday(0);
+        console.error('[Dashboard] Failed to aggregate minutes today', e);
       }
     };
 
@@ -186,8 +196,8 @@ const Dashboard = () => {
     readStreak();
     readProblemsToday();
 
-    // Optionally refresh every 15s while dashboard is open
-    const interval = setInterval(() => { aggregateToday(); readStreak(); readProblemsToday(); }, 15000);
+    // Optionally refresh every minute while dashboard is open
+    const interval = setInterval(() => { aggregateToday(); readStreak(); readProblemsToday(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -413,28 +423,45 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Quick Actions */}
+            {/* Recent Generated Problem Sets */}
             <Card className="p-6 bg-white border border-gray-200">
-              <h2 className="text-xl font-semibold text-home-foreground mb-4">Quick Actions</h2>
-              <div className="grid md:grid-cols-3 gap-4">
-                <Link to="/session/new">
-                  <Button variant="outline" className="w-full h-20 flex-col border-home-primary text-home-primary hover:bg-home-primary/10 hover:border-home-primary/80 transition-colors">
-                    <Plus className="w-6 h-6 mb-2" />
-                    Create Session
-                  </Button>
-                </Link>
-                <Link to="/communities">
-                  <Button variant="outline" className="w-full h-20 flex-col border-home-secondary text-home-secondary hover:bg-home-secondary/10 hover:border-home-secondary/80 transition-colors">
-                    <Users className="w-6 h-6 mb-2" />
-                    Browse Communities
-                  </Button>
-                </Link>
-                <Link to="/upload">
-                  <Button variant="outline" className="w-full h-20 flex-col border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors">
-                    <Calendar className="w-6 h-6 mb-2" />
-                    Upload Document
-                  </Button>
-                </Link>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-home-foreground">Recent Generated Problem Sets</h2>
+              </div>
+              
+              <div className="space-y-3">
+                {recentProblemSets.length > 0 ? (
+                  recentProblemSets.map((problemSet) => (
+                    <div key={problemSet.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-home-secondary/10 rounded-lg flex items-center justify-center text-home-secondary">
+                          <BookOpen className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-home-foreground truncate max-w-md">{problemSet.title}</h3>
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <span>{problemSet.problem_count} {problemSet.problem_count === 1 ? 'problem' : 'problems'}</span>
+                            <span>•</span>
+                            <span>{formatRelativeTime(problemSet.created_at)}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="border-home-secondary text-home-secondary hover:bg-home-secondary hover:text-white"
+                      >
+                        Open
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-600">
+                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="mb-2">No problem sets yet</p>
+                    <p className="text-sm">Generate your first problem set to get started!</p>
+                  </div>
+                )}
               </div>
             </Card>
           </div>

@@ -376,7 +376,7 @@ const CourseCommunity = () => {
   return (
     <div className="min-h-screen bg-home-background font-lexend">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-1">
@@ -433,7 +433,7 @@ const CourseCommunity = () => {
                 </Button>
                 <div>
                   <h1 className="text-3xl font-bold text-home-foreground">{community.course_name}</h1>
-                  <p className="text-gray-600">{community.description}</p>
+                  <p className="text-gray-600 dark:text-gray-400">{community.description}</p>
                   <Badge className="mt-2">{community.course_category}</Badge>
                 </div>
               </div>
@@ -442,7 +442,7 @@ const CourseCommunity = () => {
                   Join Community
                 </Button>
               ) : (
-                <Button onClick={handleLeaveCommunity} variant="outline" className="border-red-500 text-red-600 hover:bg-red-50">
+                <Button onClick={handleLeaveCommunity} variant="outline" className="border-red-500 dark:border-red-400 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
                   Leave Community
                 </Button>
               )}
@@ -451,7 +451,7 @@ const CourseCommunity = () => {
             {isMember ? (
               <>
                 {/* Discussions Feed */}
-                <Card className="p-6 bg-white border border-gray-200">
+                <Card className="p-6 bg-card border border-border">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-5 h-5 text-home-primary" />
@@ -468,7 +468,7 @@ const CourseCommunity = () => {
                   </div>
 
                   {showNewDiscussion && (
-                    <Card className="p-4 mb-4 bg-gray-50">
+                    <Card className="p-4 mb-4 bg-gray-50 dark:bg-accent">
                       <Input
                         placeholder="Discussion title..."
                         value={newDiscussionTitle}
@@ -504,10 +504,10 @@ const CourseCommunity = () => {
 
                   <div className="space-y-4">
                     {discussions.length === 0 ? (
-                      <p className="text-center py-8 text-gray-600">No discussions yet. Start one!</p>
+                      <p className="text-center py-8 text-gray-600 dark:text-gray-400">No discussions yet. Start one!</p>
                     ) : (
                       discussions.map((discussion) => (
-                        <Card key={discussion.id} className="p-4 hover:bg-gray-50 transition-colors">
+                        <Card key={discussion.id} className="p-4 hover:bg-accent transition-colors border border-border">
                           <div className="flex gap-3">
                             <Avatar className="w-10 h-10">
                               <AvatarImage src={discussion.profiles?.image_url || ''} />
@@ -520,12 +520,12 @@ const CourseCommunity = () => {
                                 <span className="font-semibold text-home-foreground">
                                   {discussion.profiles?.first_name} {discussion.profiles?.last_name}
                                 </span>
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-gray-500 dark:text-gray-400">
                                   {formatDistanceToNow(new Date(discussion.created_at), { addSuffix: true })}
                                 </span>
                               </div>
                               <h3 className="font-semibold text-home-foreground mb-1">{discussion.title}</h3>
-                              <p className="text-gray-600">{discussion.content}</p>
+                              <p className="text-gray-600 dark:text-gray-400">{discussion.content}</p>
                             </div>
                           </div>
                         </Card>
@@ -535,7 +535,7 @@ const CourseCommunity = () => {
                 </Card>
 
                 {/* Shared Resources */}
-                <Card className="p-6 bg-white border border-gray-200">
+                <Card className="p-6 bg-card border border-border">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <FileText className="w-5 h-5 text-home-primary" />
@@ -552,7 +552,7 @@ const CourseCommunity = () => {
                   </div>
 
                   {showNewResource && (
-                    <Card className="p-4 mb-4 bg-gray-50">
+                    <Card className="p-4 mb-4 bg-gray-50 dark:bg-accent">
                       <Input
                         placeholder="Resource title..."
                         value={newResourceTitle}
@@ -593,16 +593,16 @@ const CourseCommunity = () => {
 
                   <div className="space-y-3">
                     {resources.length === 0 ? (
-                      <p className="text-center py-8 text-gray-600">No resources yet. Add one!</p>
+                      <p className="text-center py-8 text-gray-600 dark:text-gray-400">No resources yet. Add one!</p>
                     ) : (
                       resources.map((resource) => (
-                        <Card key={resource.id} className="p-4 hover:bg-gray-50 transition-colors">
+                        <Card key={resource.id} className="p-4 hover:bg-accent transition-colors border border-border">
                           <div className="flex gap-3">
                             <LinkIcon className="w-5 h-5 text-home-primary flex-shrink-0 mt-1" />
                             <div className="flex-1">
                               <h3 className="font-semibold text-home-foreground mb-1">{resource.title}</h3>
                               {resource.description && (
-                                <p className="text-sm text-gray-600 mb-2">{resource.description}</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{resource.description}</p>
                               )}
                               <a 
                                 href={resource.resource_url}
@@ -612,7 +612,7 @@ const CourseCommunity = () => {
                               >
                                 {resource.resource_url}
                               </a>
-                              <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+                              <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
                                 <span>
                                   Added by {resource.profiles?.first_name} {resource.profiles?.last_name}
                                 </span>
@@ -630,10 +630,10 @@ const CourseCommunity = () => {
                 </Card>
               </>
             ) : (
-              <Card className="p-12 text-center bg-white border border-gray-200">
+              <Card className="p-12 text-center bg-card border border-border">
                 <Users className="w-16 h-16 text-home-primary mx-auto mb-4" />
                 <h2 className="text-2xl font-bold text-home-foreground mb-2">Join this community</h2>
-                <p className="text-gray-600 mb-6">Join to participate in discussions and access shared resources</p>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Join to participate in discussions and access shared resources</p>
                 <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
                   Join Community
                 </Button>
@@ -643,7 +643,7 @@ const CourseCommunity = () => {
 
           {/* Sidebar - Active Users */}
           <div className="space-y-6">
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <div className="flex items-center gap-2 mb-4">
                 <Users className="w-5 h-5 text-home-primary" />
                 <h3 className="font-semibold text-home-foreground">Studying Now</h3>
@@ -652,7 +652,7 @@ const CourseCommunity = () => {
 
               <div className="space-y-3">
                 {activeUsers.length === 0 ? (
-                  <p className="text-sm text-gray-600 text-center py-4">No one is studying right now</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-4">No one is studying right now</p>
                 ) : (
                   activeUsers.map((activeUser) => (
                     <div key={activeUser.user_id} className="flex items-center gap-3">
@@ -666,7 +666,7 @@ const CourseCommunity = () => {
                         <p className="text-sm font-medium text-home-foreground truncate">
                           {activeUser.profiles?.first_name} {activeUser.profiles?.last_name}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
                           Active {formatDistanceToNow(new Date(activeUser.last_seen), { addSuffix: true })}
                         </p>
                       </div>

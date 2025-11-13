@@ -186,7 +186,7 @@ const Communities = () => {
   return (
     <div className="min-h-screen bg-home-background font-lexend">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-1">
@@ -237,7 +237,7 @@ const Communities = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-home-foreground">Communities</h1>
-                <p className="text-gray-600">Connect with fellow learners and join study groups</p>
+                <p className="text-gray-600 dark:text-gray-400">Connect with fellow learners and join study groups</p>
               </div>
               <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
                 <Plus className="w-5 h-5 mr-2" />
@@ -246,7 +246,7 @@ const Communities = () => {
             </div>
 
             {/* Search and Filters */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -273,7 +273,7 @@ const Communities = () => {
 
             {/* Joined Communities */}
             {joinedCommunities.length > 0 && (
-              <Card className="p-6 bg-white border border-gray-200">
+              <Card className="p-6 bg-card border border-border">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-semibold text-home-foreground">My Communities</h2>
@@ -306,7 +306,7 @@ const Communities = () => {
                       key={membership.id}
                       to={`/community/${membership.course_communities.id}`}
                     >
-                      <Card className="p-4 hover:bg-gray-50 transition-colors cursor-pointer border border-gray-200">
+                      <Card className="p-4 hover:bg-accent transition-colors cursor-pointer border border-border">
                         <div className="flex items-start gap-3">
                           <div className="w-10 h-10 bg-home-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                             <BookOpen className="w-5 h-5 text-home-primary" />
@@ -314,7 +314,7 @@ const Communities = () => {
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-home-foreground truncate">{membership.course_communities.course_name}</h3>
                             <Badge variant="secondary" className="mt-1 text-xs">{membership.course_communities.course_category}</Badge>
-                            <p className="text-xs text-gray-500 mt-2">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                               Joined {formatRelativeTime(membership.joined_at)}
                             </p>
                           </div>
@@ -328,7 +328,7 @@ const Communities = () => {
             )}
 
             {/* Browse All Communities */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-home-foreground">Browse All Communities</h2>
                 <Button
@@ -356,7 +356,7 @@ const Communities = () => {
                   {filteredCategories.length > 0 ? (
                 filteredCategories.map((category) => (
                 <div key={category.category} className="space-y-4">
-                  <h2 className="text-2xl font-bold text-home-foreground border-t-4 border-gray-900 pt-4">
+                  <h2 className="text-2xl font-bold text-home-foreground border-t-4 border-gray-900 dark:border-gray-600 pt-4">
                     {category.category}
                   </h2>
                   <div className="space-y-3">
@@ -364,17 +364,17 @@ const Communities = () => {
                       <Link 
                         key={course.id}
                         to={`/community/${course.id}`}
-                        className="flex items-center justify-between p-4 bg-white border-b border-gray-200 hover:bg-gray-50 transition-colors group"
+                        className="flex items-center justify-between p-4 bg-card border-b border-border hover:bg-accent transition-colors group"
                       >
                         <span className="text-home-foreground font-medium">{course.name}</span>
-                        <span className="text-gray-400 group-hover:text-home-primary transition-colors">›</span>
+                        <span className="text-gray-400 dark:text-gray-500 group-hover:text-home-primary transition-colors">›</span>
                       </Link>
                     ))}
                   </div>
                 </div>
               ))
                   ) : (
-                    <div className="col-span-full text-center py-12 text-gray-600">
+                    <div className="col-span-full text-center py-12 text-gray-600 dark:text-gray-400">
                       <p>No communities found matching "{searchQuery}"</p>
                     </div>
                   )}

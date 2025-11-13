@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Switch } from "@/components/ui/switch";
 import { 
   BookOpen, 
   Plus, 
@@ -14,13 +15,16 @@ import {
   File,
   FileText,
   Image as ImageIcon,
-  BookUp
+  BookUp,
+  Moon,
+  Sun
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface Profile {
   first_name: string | null;
@@ -46,6 +50,7 @@ interface ProblemSet {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
@@ -272,7 +277,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-home-background font-lexend">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-1">
@@ -296,6 +301,16 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Dark Mode Toggle */}
+            <div className="flex items-center gap-2 px-2">
+              <Sun className={`w-4 h-4 transition-opacity ${theme === 'light' ? 'opacity-100' : 'opacity-40'}`} />
+              <Switch 
+                checked={theme === 'dark'} 
+                onCheckedChange={() => toggleTheme()}
+                aria-label="Toggle dark mode"
+              />
+              <Moon className={`w-4 h-4 transition-opacity ${theme === 'dark' ? 'opacity-100' : 'opacity-40'}`} />
+            </div>
             <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
               <Bell className="w-5 h-5" />
             </Button>
@@ -325,7 +340,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-home-foreground">Welcome back, {getDisplayName()}!</h1>
-                <p className="text-gray-600">Ready to continue your learning journey?</p>
+                <p className="text-gray-600 dark:text-gray-400">Ready to continue your learning journey?</p>
               </div>
               <Link to="/upload">
                 <Button className="group bg-home-primary hover:bg-home-primary-hover text-white">
@@ -337,40 +352,40 @@ const Dashboard = () => {
 
             {/* Stats Cards with Liquid Glass Effect */}
             <div className="grid md:grid-cols-4 gap-4">
-              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-primary/10 via-white/50 to-home-primary/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-primary/10 via-white/50 dark:via-home-surface/50 to-home-primary/5 backdrop-blur-md border border-white/20 dark:border-gray-700/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
                 <div className="absolute inset-0 bg-gradient-to-br from-home-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="relative z-10 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-home-primary/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                     <Zap className="w-6 h-6 text-home-primary" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Current Streak</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Current Streak</p>
                     <p className="text-2xl font-bold text-home-foreground">{streakCount}</p>
                   </div>
                 </div>
               </Card>
               
-              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-secondary/10 via-white/50 to-home-secondary/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-home-secondary/10 via-white/50 dark:via-home-surface/50 to-home-secondary/5 backdrop-blur-md border border-white/20 dark:border-gray-700/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
                 <div className="absolute inset-0 bg-gradient-to-br from-home-secondary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="relative z-10 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-home-secondary/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
                     <Clock className="w-6 h-6 text-home-secondary" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Minutes Today</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Minutes Today</p>
                     <p className="text-2xl font-bold text-home-foreground">{minutesToday}</p>
                   </div>
                 </div>
               </Card>
               
-              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-yellow-500/10 via-white/50 to-yellow-500/5 backdrop-blur-md border border-white/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
+              <Card className="group relative overflow-hidden p-6 bg-gradient-to-br from-yellow-500/10 via-white/50 dark:via-home-surface/50 to-yellow-500/5 backdrop-blur-md border border-white/20 dark:border-gray-700/20 shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 cursor-pointer">
                 <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="relative z-10 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-yellow-500/20 backdrop-blur-sm flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <Trophy className="w-6 h-6 text-yellow-600" />
+                    <Trophy className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Problems Solved</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Problems Solved</p>
                     <p className="text-2xl font-bold text-home-foreground">{problemsToday}</p>
                   </div>
                 </div>
@@ -378,7 +393,7 @@ const Dashboard = () => {
             </div>
 
             {/* Recent Studying Sessions */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-home-foreground">Recent Studying Sessions</h2>
                 <Link to="/upload">
@@ -389,14 +404,14 @@ const Dashboard = () => {
               <div className="space-y-3">
                 {recentFiles.length > 0 ? (
                   recentFiles.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                    <div key={file.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors cursor-pointer">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-home-primary/10 rounded-lg flex items-center justify-center text-home-primary">
                           {getFileIcon(file.file_type)}
                         </div>
                         <div>
                           <h3 className="font-medium text-home-foreground truncate max-w-md">{file.file_name}</h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                             <span>{formatFileSize(file.file_size)}</span>
                             <span>•</span>
                             <span>{formatRelativeTime(file.created_at)}</span>
@@ -414,7 +429,7 @@ const Dashboard = () => {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-8 text-gray-600">
+                  <div className="text-center py-8 text-gray-600 dark:text-gray-400">
                     <File className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="mb-2">None</p>
                     <p className="text-sm">Upload your first file to start studying!</p>
@@ -424,7 +439,7 @@ const Dashboard = () => {
             </Card>
 
             {/* Recent Generated Problem Sets */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-home-foreground">Recent Generated Problem Sets</h2>
               </div>
@@ -432,14 +447,14 @@ const Dashboard = () => {
               <div className="space-y-3">
                 {recentProblemSets.length > 0 ? (
                   recentProblemSets.map((problemSet) => (
-                    <div key={problemSet.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                    <div key={problemSet.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors cursor-pointer">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-home-secondary/10 rounded-lg flex items-center justify-center text-home-secondary">
                           <BookOpen className="w-6 h-6" />
                         </div>
                         <div>
                           <h3 className="font-medium text-home-foreground truncate max-w-md">{problemSet.title}</h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                          <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                             <span>{problemSet.problem_count} {problemSet.problem_count === 1 ? 'problem' : 'problems'}</span>
                             <span>•</span>
                             <span>{formatRelativeTime(problemSet.created_at)}</span>
@@ -456,7 +471,7 @@ const Dashboard = () => {
                     </div>
                   ))
                 ) : (
-                  <div className="text-center py-8 text-gray-600">
+                  <div className="text-center py-8 text-gray-600 dark:text-gray-400">
                     <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p className="mb-2">No problem sets yet</p>
                     <p className="text-sm">Generate your first problem set to get started!</p>

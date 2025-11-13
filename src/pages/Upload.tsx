@@ -262,7 +262,7 @@ const Upload = () => {
       <div className="min-h-screen bg-home-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-home-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+            <p className="text-gray-600 dark:text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -271,7 +271,7 @@ const Upload = () => {
   return (
     <div className="min-h-screen bg-home-background font-lexend">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-2">
@@ -304,11 +304,11 @@ const Upload = () => {
           {/* Header */}
           <div>
             <h1 className="text-3xl font-bold text-home-foreground mb-2">File Upload</h1>
-            <p className="text-gray-600">Upload and manage your study materials</p>
+            <p className="text-gray-600 dark:text-gray-400">Upload and manage your study materials</p>
           </div>
 
           {/* Upload Area */}
-          <Card className="p-8 bg-white border-2 border-dashed border-gray-300 hover:border-home-primary transition-colors">
+          <Card className="p-8 bg-card border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-home-primary transition-colors">
             <div
               className={`text-center ${dragActive ? 'opacity-50' : ''}`}
               onDragEnter={handleDrag}
@@ -320,7 +320,7 @@ const Upload = () => {
               <h3 className="text-xl font-semibold text-home-foreground mb-2">
                 {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
               </h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
                 Support for PDF, images, documents, and more
               </p>
               <input
@@ -344,7 +344,7 @@ const Upload = () => {
           </Card>
 
           {/* File List */}
-          <Card className="p-6 bg-white">
+          <Card className="p-6 bg-card border border-border">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-home-foreground">
                 Your Files ({files.length})
@@ -352,7 +352,7 @@ const Upload = () => {
             </div>
 
             {files.length === 0 ? (
-              <div className="text-center py-12 text-gray-600">
+              <div className="text-center py-12 text-gray-600 dark:text-gray-400">
                 <File className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p>No files uploaded yet</p>
                 <p className="text-sm">Upload your first file to get started</p>
@@ -362,7 +362,7 @@ const Upload = () => {
                 {files.map((file) => (
                   <div
                     key={file.id}
-                    className="flex items-center gap-4 p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors"
+                    className="flex items-center gap-4 p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors"
                   >
                     <div className="flex-shrink-0 w-12 h-12 bg-home-primary/10 rounded-lg flex items-center justify-center text-home-primary">
                       {getFileIcon(file.file_type)}
@@ -372,7 +372,7 @@ const Upload = () => {
                       <h3 className="font-medium text-home-foreground truncate">
                         {file.file_name}
                       </h3>
-                      <div className="flex items-center gap-3 text-sm text-gray-600">
+                      <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                         <span>{formatFileSize(file.file_size)}</span>
                         <span>•</span>
                         <span>{formatDate(file.created_at)}</span>
@@ -392,7 +392,7 @@ const Upload = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDownload(file)}
-                        className="text-gray-600 hover:bg-gray-100"
+                        className="text-gray-600 dark:text-gray-400 hover:bg-accent"
                       >
                         <Download className="w-4 h-4" />
                       </Button>
@@ -400,7 +400,7 @@ const Upload = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDelete(file)}
-                        className="text-red-600 hover:bg-red-50"
+                        className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

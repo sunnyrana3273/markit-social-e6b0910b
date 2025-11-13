@@ -13,6 +13,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { useTheme } from "@/contexts/ThemeContext";
 
 // Component to render text with LaTeX math support
 interface MathTextProps {
@@ -335,6 +336,7 @@ interface Friend {
 const DocumentEditor: React.FC = () => {
   const navigate = useNavigate();
   const { fileId } = useParams();
+  const { theme } = useTheme();
   const presenceChannelRef = React.useRef<RealtimeChannel | null>(null);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const [pdfPages, setPdfPages] = useState<string[]>([]); // Thumbnails for display
@@ -2101,11 +2103,13 @@ const DocumentEditor: React.FC = () => {
 
       {/* Full page Excalidraw */}
       <div className="absolute inset-0" style={{ width: "100%", height: "100%" }}>
-        <Excalidraw
-          initialData={savedInitialData ?? initialData}
-          onChange={handleExcalidrawChange}
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-        />
+        <div className={theme === 'dark' ? 'excalidraw theme--dark' : 'excalidraw'}>
+          <Excalidraw
+            initialData={savedInitialData ?? initialData}
+            onChange={handleExcalidrawChange}
+            excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          />
+        </div>
       </div>
 
       {/* Friend Chat Modal */}

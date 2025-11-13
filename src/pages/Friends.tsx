@@ -752,7 +752,7 @@ const Friends = () => {
   return (
     <div className="min-h-screen bg-home-background font-lexend">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Link to="/" className="flex items-center gap-1">
@@ -806,7 +806,7 @@ const Friends = () => {
                             <p className="text-sm font-medium text-home-foreground">
                               {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
                             </p>
-                            <p className="text-xs text-gray-600">wants to be your friend</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">wants to be your friend</p>
                           </div>
                           <div className="flex gap-1">
                             <Button
@@ -867,7 +867,7 @@ const Friends = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-home-foreground">Friends</h1>
-                <p className="text-gray-600">Connect and study with your learning partners</p>
+                <p className="text-gray-600 dark:text-gray-400">Connect and study with your learning partners</p>
               </div>
               <Dialog open={isAddFriendOpen} onOpenChange={setIsAddFriendOpen}>
                 <DialogTrigger asChild>
@@ -927,7 +927,7 @@ const Friends = () => {
                                 ? `${searchedUser.first_name} ${searchedUser.last_name}`
                                 : searchedUser.username}
                             </h3>
-                            <p className="text-sm text-gray-600">@{searchedUser.username}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">@{searchedUser.username}</p>
                           </div>
                           <Button 
                             onClick={handleSendFriendRequest}
@@ -946,7 +946,7 @@ const Friends = () => {
             </div>
 
             {/* Search */}
-            <Card className="p-4 bg-white border border-gray-200">
+            <Card className="p-4 bg-card border border-border">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                 <Input 
@@ -964,7 +964,7 @@ const Friends = () => {
                     <Trophy className="w-6 h-6 text-yellow-500" />
                     Friends Leaderboard
                   </h2>
-                  <p className="text-sm text-gray-600 mt-1">Last 7 days performance</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Last 7 days performance</p>
                 </div>
               </div>
 
@@ -1007,11 +1007,11 @@ const Friends = () => {
                     {leaderboard.map((friend, index) => (
                       <div
                         key={friend.id}
-                        className={`leaderboard-item ${getRankClass(index)} p-5 rounded-xl bg-white/80 backdrop-blur-sm border-2 cursor-pointer ${
-                          index === 0 ? 'border-yellow-400' :
-                          index === 1 ? 'border-gray-400' :
-                          index === 2 ? 'border-amber-700' :
-                          'border-gray-200'
+                        className={`leaderboard-item ${getRankClass(index)} p-5 rounded-xl bg-white/80 dark:bg-card/80 backdrop-blur-sm border-2 cursor-pointer ${
+                          index === 0 ? 'border-yellow-400 dark:border-yellow-500' :
+                          index === 1 ? 'border-gray-400 dark:border-gray-500' :
+                          index === 2 ? 'border-amber-700 dark:border-amber-600' :
+                          'border-gray-200 dark:border-border'
                         }`}
                       >
                         <div className="flex items-center gap-4">
@@ -1031,18 +1031,18 @@ const Friends = () => {
                           {/* Friend Info */}
                           <div className="flex-1 min-w-0">
                             <h3 className="font-bold text-home-foreground text-lg truncate">{friend.name}</h3>
-                            <div className="mt-1 text-xs text-gray-600 space-y-1">
+                            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Brain className="w-3 h-3 text-purple-500" />
-                                <span className="font-semibold text-purple-600">{friend.lifetimeProblems}</span>
-                                <span className="text-gray-500">lifetime problems</span>
+                                <span className="font-semibold text-purple-600 dark:text-purple-400">{friend.lifetimeProblems}</span>
+                                <span className="text-gray-500 dark:text-gray-400">lifetime problems</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Clock className="w-3 h-3 text-blue-500" />
-                                <span className="font-semibold text-blue-600">{friend.lifetimeMinutes}</span>
-                                <span className="text-gray-500">lifetime mins</span>
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">{friend.lifetimeMinutes}</span>
+                                <span className="text-gray-500 dark:text-gray-400">lifetime mins</span>
                               </div>
-                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
                                 <span>Last 7 days: {friend.totalProblemsLast7} problems</span>
                                 <span>{friend.totalMinutesLast7} mins</span>
                                 {(friend.currentStreak > 0 || friend.longestStreak > 0) && (
@@ -1057,7 +1057,7 @@ const Friends = () => {
                             <div className={`text-2xl font-bold bg-gradient-to-r ${getRankColor(index)} bg-clip-text text-transparent`}>
                               {friend.score.toFixed(0)}
                             </div>
-                            <div className="text-xs text-gray-500 font-medium">score</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">score</div>
                           </div>
                         </div>
                       </div>
@@ -1066,9 +1066,9 @@ const Friends = () => {
                 </>
               ) : (
                 <div className="text-center py-12">
-                  <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No friends to beat yet!</h3>
-                  <p className="text-sm text-gray-500 mb-4">Add friends to see who's studying the most</p>
+                  <Trophy className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+                  <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400 mb-2">No friends to beat yet!</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Add friends to see who's studying the most</p>
                   <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
                     <UserPlus className="w-4 h-4 mr-2" />
                     Add Friends
@@ -1079,7 +1079,7 @@ const Friends = () => {
 
             {/* Friend Requests */}
             {friendRequests.length > 0 && (
-              <Card className="p-6 bg-white border border-gray-200">
+              <Card className="p-6 bg-card border border-border">
                 <h2 className="text-xl font-semibold text-home-foreground mb-4">Friend Requests</h2>
                 <div className="space-y-4">
                   {friendRequests.map((request) => (
@@ -1090,7 +1090,7 @@ const Friends = () => {
                         </div>
                         <div>
                           <h3 className="font-medium text-home-foreground">{request.name}</h3>
-                          <p className="text-sm text-gray-600">{request.mutualFriends} mutual friends</p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">{request.mutualFriends} mutual friends</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -1108,7 +1108,7 @@ const Friends = () => {
             )}
 
             {/* Friends List */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <h2 className="text-xl font-semibold text-home-foreground mb-4">All Friends ({friendsWithMetrics.length})</h2>
               {friendsWithMetrics.length > 0 ? (
                 <div className="grid md:grid-cols-2 gap-4">
@@ -1123,7 +1123,7 @@ const Friends = () => {
                     const statusConfig = statusStyles[status] ?? statusStyles.offline;
                     
                     return (
-                      <div key={friend.friend_id} className="p-4 bg-home-surface rounded-lg hover:bg-gray-100 transition-colors">
+                      <div key={friend.friend_id} className="p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors">
                         <div className="flex items-start gap-4">
                           <Avatar className="w-12 h-12">
                             <AvatarImage src={friend.profiles.image_url || undefined} />
@@ -1155,7 +1155,7 @@ const Friends = () => {
                             </div>
                             
                             <div className="space-y-2">
-                              <div className="flex items-center gap-4 text-xs text-gray-600">
+                              <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
                                 <div className="flex items-center gap-1">
                                   <Brain className="w-3 h-3 text-purple-500" />
                                   <span>{totalProblems} problems</span>
@@ -1165,7 +1165,7 @@ const Friends = () => {
                                   <span>{totalMinutes} mins</span>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
                                 <span>Lifetime: {lifetimeQuestions} problems</span>
                                 <span>|</span>
                                 <span>{lifetimeMinutes} mins</span>
@@ -1184,7 +1184,7 @@ const Friends = () => {
                   })}
                 </div>
               ) : (
-                <div className="text-center py-12 text-gray-600">
+                <div className="text-center py-12 text-gray-600 dark:text-gray-400">
                   <Users className="w-16 h-16 mx-auto mb-4 opacity-30" />
                   <p className="text-lg mb-2">No friends yet</p>
                   <p className="text-sm">Start connecting with other students to build your study network!</p>
@@ -1194,7 +1194,7 @@ const Friends = () => {
 
             {/* Compact Friend Requests Section */}
             {(incomingRequests.length > 0 || outgoingRequests.length > 0) && (
-              <Card className="p-6 bg-white border border-gray-200">
+              <Card className="p-6 bg-card border border-border">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-home-foreground">
                     Friend Requests ({incomingRequests.length + outgoingRequests.length})
@@ -1218,10 +1218,10 @@ const Friends = () => {
                     {/* Incoming Requests */}
                     {incomingRequests.length > 0 && (
                       <div>
-                        <h3 className="text-sm font-medium text-gray-700 mb-3">Incoming ({incomingRequests.length})</h3>
+                        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Incoming ({incomingRequests.length})</h3>
                         <div className="space-y-2">
                           {incomingRequests.map((request) => (
-                            <div key={request.user_id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                            <div key={request.user_id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-accent rounded-lg">
                               <Avatar className="w-10 h-10">
                                 <AvatarImage src={request.profiles?.image_url} />
                                 <AvatarFallback className="bg-home-primary text-white">
@@ -1232,7 +1232,7 @@ const Friends = () => {
                                 <p className="font-medium text-home-foreground truncate">
                                   {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
                                 </p>
-                                <p className="text-sm text-gray-600">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
                                   Sent {new Date(request.created_at).toLocaleDateString()}
                                 </p>
                               </div>
@@ -1264,10 +1264,10 @@ const Friends = () => {
                     {/* Outgoing Requests */}
                     {outgoingRequests.length > 0 && (
                       <div>
-                        <h3 className="text-sm font-medium text-gray-700 mb-3">Outgoing ({outgoingRequests.length})</h3>
+                        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Outgoing ({outgoingRequests.length})</h3>
                         <div className="space-y-2">
                           {outgoingRequests.map((request) => (
-                            <div key={request.friend_id} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg">
+                            <div key={request.friend_id} className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                               <Avatar className="w-10 h-10">
                                 <AvatarImage src={request.profiles?.image_url} />
                                 <AvatarFallback className="bg-blue-500 text-white">
@@ -1278,7 +1278,7 @@ const Friends = () => {
                                 <p className="font-medium text-home-foreground truncate">
                                   {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
                                 </p>
-                                <p className="text-sm text-gray-600">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
                                   Sent {new Date(request.created_at).toLocaleDateString()}
                                 </p>
                               </div>
@@ -1304,29 +1304,29 @@ const Friends = () => {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Friends Stats */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <h3 className="font-semibold text-home-foreground mb-4">Friends Overview</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Total Friends</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Friends</span>
                   <span className="font-semibold text-home-foreground">{totalFriends}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Online Now</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Online Now</span>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
                     <span className="font-semibold text-home-foreground">{statusSummary.online}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Currently Studying</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Currently Studying</span>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
                     <span className="font-semibold text-home-foreground">{statusSummary.studying}</span>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Offline</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Offline</span>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-gray-400"></div>
                     <span className="font-semibold text-home-foreground">{statusSummary.offline}</span>
@@ -1336,9 +1336,9 @@ const Friends = () => {
             </Card>
 
             {/* Study Groups */}
-            <Card className="p-6 bg-white border border-gray-200">
+            <Card className="p-6 bg-card border border-border">
               <h3 className="font-semibold text-home-foreground mb-4">Active Study Groups</h3>
-              <div className="text-center py-8 text-gray-600">
+              <div className="text-center py-8 text-gray-600 dark:text-gray-400">
                 <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="text-sm mb-2">No study groups yet</p>
                 <p className="text-xs">Create or join a study group to collaborate!</p>

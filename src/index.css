@@ -96,6 +96,94 @@ All colors MUST be HSL for proper theming.
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
+  .dark {
+    /* Main Color Theme - Dark Mode */
+    --home-background: 0 0% 8%;            /* Very dark background */
+    --home-foreground: 0 0% 95%;          /* Light text */
+    --home-surface: 0 0% 12%;            /* Dark surface */
+    --home-surface-hover: 0 0% 16%;
+
+    /* Brand Identity - Dark Mode */
+    --home-primary: 140 50% 55%;         /* Lighter green for dark mode */
+    --home-primary-hover: 140 50% 60%;
+    --home-primary-foreground: 0 0% 100%;
+
+    --home-secondary: 220 70% 60%;       /* Brighter blue for dark mode */
+    --home-secondary-hover: 220 70% 65%;
+    --home-secondary-foreground: 0 0% 100%;
+
+    /* Legacy Variables for Dashboard Components - Dark Mode */
+    --background: 0 0% 8%;
+    --foreground: 0 0% 95%;
+    --surface: 0 0% 12%;
+    --surface-hover: 0 0% 16%;
+    --primary: 140 50% 55%;
+    --primary-hover: 140 50% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 70% 60%;
+    --secondary-hover: 220 70% 65%;
+    --secondary-foreground: 0 0% 100%;
+    --success: 140 50% 55%;
+    --success-hover: 140 50% 60%;
+    --warning: 31 91% 70%;
+    --danger: 0 84% 70%;
+
+    /* UI Elements - Dark Mode */
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 95%;
+    --card-hover: 0 0% 16%;
+
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
+
+    --muted: 0 0% 20%;
+    --muted-foreground: 0 0% 65%;
+
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 95%;
+    --accent-hover: 0 0% 20%;
+
+    --destructive: 0 84% 70%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 12%;
+    --ring: 140 50% 55%;
+
+    /* Special Effects - Dark Mode */
+    --gradient-primary: linear-gradient(135deg, hsl(140 65% 55%), hsl(120 25% 70%));
+    --gradient-secondary: linear-gradient(135deg, hsl(120 25% 70%), hsl(110 70% 60%));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(140 50% 65%));
+    --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 10%));
+    --gradient-glass: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(0,0,0,0.3));
+    
+    --glow-primary: 0 0 20px hsl(var(--primary) / 0.4);
+    --glow-secondary: 0 0 20px hsl(var(--secondary) / 0.4);
+    --glow-success: 0 0 15px hsl(var(--success) / 0.5);
+    
+    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.9);
+    --shadow-hover: 0 8px 30px hsl(0 0% 0% / 0.95);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.5);
+
+    --glass-border: 0 0% 100% / 0.1;
+
+    --sidebar-background: 0 0% 10%;
+
+    --sidebar-foreground: 0 0% 85%;
+
+    --sidebar-primary: 0 0% 95%;
+
+    --sidebar-primary-foreground: 0 0% 10%;
+
+    --sidebar-accent: 0 0% 16%;
+
+    --sidebar-accent-foreground: 0 0% 95%;
+
+    --sidebar-border: 0 0% 20%;
+
+    --sidebar-ring: 220 70% 60%;
+  }
+
   /* Custom utility classes */
   .gradient-primary {
     background: var(--gradient-primary);
@@ -191,4 +279,13 @@ All colors MUST be HSL for proper theming.
 
 .excalidraw .help-icon {
   display: none !important;
+}
+
+/* Excalidraw dark mode styling */
+.dark .excalidraw {
+  --color-primary: hsl(140 50% 55%);
+  --color-primary-darker: hsl(140 50% 45%);
+  --color-primary-darkest: hsl(140 50% 35%);
+  --color-primary-light: hsl(140 50% 65%);
+  --color-primary-contrast-offset: hsl(140 50% 50%);
 }

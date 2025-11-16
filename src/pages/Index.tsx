@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,10 @@ import { Link } from "react-router-dom";
 import peopleIcon from "@/assets/people.svg";
 
 const Index = () => {
+  useEffect(() => {
+    document.title = "MarkIt: Learning but better";
+  }, []);
+
   return (
     <div className="min-h-screen bg-home-background font-lexend force-light-mode">
       {/* Header */}

@@ -84,6 +84,7 @@ const CourseCommunity = () => {
   const [showNewResource, setShowNewResource] = useState(false);
 
   useEffect(() => {
+    document.title = "MarkIt | Community";
     const initializeUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -438,7 +439,7 @@ const CourseCommunity = () => {
                 </div>
               </div>
               {!isMember ? (
-                <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
+                <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white shine-button">
                   Join Community
                 </Button>
               ) : (

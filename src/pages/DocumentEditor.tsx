@@ -366,6 +366,10 @@ const DocumentEditor: React.FC = () => {
   const [chatPosition, setChatPosition] = useState({ x: 50, y: window.innerHeight - 120 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
+  useEffect(() => {
+    document.title = "MarkIt | Document Editor";
+  }, []);
+
   // Excalidraw localStorage persistence helpers
   const getStorageKey = (id?: string) => `markit.documentEditor.excalidraw${id ? `:${id}` : ''}`;
   function debounce<T extends (...args: any[]) => void>(fn: T, delay = 500) {

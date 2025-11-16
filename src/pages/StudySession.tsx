@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Book } from "lucide-react";
@@ -10,6 +10,10 @@ const StudySession = () => {
   const handleSceneChange = useCallback((elements: any[], appState: any) => {
     // TODO: Implement real-time sync with Supabase
     console.log("Scene updated:", { elements, appState });
+  }, []);
+
+  useEffect(() => {
+    document.title = "MarkIt | Study Session";
   }, []);
 
   return (

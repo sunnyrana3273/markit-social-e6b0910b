@@ -40,6 +40,10 @@ const Upload = () => {
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    document.title = "MarkIt | Uploads";
+  }, []);
+
+  useEffect(() => {
     const initializeUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       

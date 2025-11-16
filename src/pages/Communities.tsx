@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +16,6 @@ import {
   ChevronUp
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
@@ -49,6 +49,7 @@ const Communities = () => {
   const [isMyCommunitiesMinimized, setIsMyCommunitiesMinimized] = useState(false);
 
   useEffect(() => {
+    document.title = "MarkIt | Communities";
     const initializeUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       

@@ -111,6 +111,10 @@ const Friends = () => {
   const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
+    document.title = "MarkIt | Friends";
+  }, []);
+
+  useEffect(() => {
     let friendsInterval: number | undefined;
 
     const fetchFriendsData = async (userId: string) => {
@@ -871,7 +875,7 @@ const Friends = () => {
               </div>
               <Dialog open={isAddFriendOpen} onOpenChange={setIsAddFriendOpen}>
                 <DialogTrigger asChild>
-                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white shine-button">
                     <UserPlus className="w-5 h-5 mr-2" />
                     Add Friend
                   </Button>

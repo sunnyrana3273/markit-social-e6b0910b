@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,11 +21,15 @@ import {
 import { Link } from "react-router-dom";
 
 const Features = () => {
+  useEffect(() => {
+    document.title = "MarkIt | Features";
+  }, []);
+
   return (
     <div className="min-h-screen bg-home-background font-lexend force-light-mode">
       {/* Header */}
       <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between relative">
           <Link to="/" className="flex items-center gap-1.5">
             <div className="w-8 h-8 flex items-center justify-center">
               <Book className="w-5 h-5 text-home-primary " />
@@ -32,7 +37,7 @@ const Features = () => {
             <span className="text-xl font-bold text-home-foreground">MarkIt</span>
           </Link>
           
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-6 absolute left-1/2 transform -translate-x-1/2">
             <Link to="/features" className="text-home-primary font-semibold">
               Features
             </Link>

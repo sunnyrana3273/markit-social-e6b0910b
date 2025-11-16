@@ -13,6 +13,7 @@ const Auth = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    document.title = "MarkIt | Sign In";
     // Check if user is already logged in and if they need onboarding
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();

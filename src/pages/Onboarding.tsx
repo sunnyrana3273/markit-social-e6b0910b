@@ -29,6 +29,7 @@ const Onboarding = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    document.title = "MarkIt | Onboarding";
     const initializeOnboarding = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       

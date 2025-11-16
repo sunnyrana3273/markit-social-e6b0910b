@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,6 @@ import {
   Sun
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
@@ -62,6 +62,7 @@ const Dashboard = () => {
   const [problemsToday, setProblemsToday] = useState<number>(0);
 
   useEffect(() => {
+    document.title = "MarkIt | Dashboard";
     // Check authentication and fetch profile
     const initializeUser = async () => {
       try {
@@ -343,7 +344,7 @@ const Dashboard = () => {
                 <p className="text-gray-600 dark:text-gray-400">Ready to continue your learning journey?</p>
               </div>
               <Link to="/upload">
-                <Button className="group bg-home-primary hover:bg-home-primary-hover text-white">
+                <Button className="group bg-home-primary hover:bg-home-primary-hover text-white shine-button">
                   <Plus className="w-5 h-5 mr-2" />
                   Upload New File
                 </Button>

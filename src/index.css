@@ -281,11 +281,98 @@ All colors MUST be HSL for proper theming.
   display: none !important;
 }
 
-/* Excalidraw dark mode styling */
-.dark .excalidraw {
-  --color-primary: hsl(140 50% 55%);
-  --color-primary-darker: hsl(140 50% 45%);
+/* Excalidraw custom styling with wrapper class */
+.excalidraw-wrapper .excalidraw {
+  --color-primary: hsl(140 50% 45%);
+  --color-primary-darker: hsl(140 50% 40%);
   --color-primary-darkest: hsl(140 50% 35%);
-  --color-primary-light: hsl(140 50% 65%);
-  --color-primary-contrast-offset: hsl(140 50% 50%);
+  --color-primary-light: hsl(140 50% 50%);
+  --color-primary-contrast-offset: hsl(140 50% 42%);
+}
+
+.excalidraw-wrapper .excalidraw.theme--dark {
+  --color-primary: #d494aa;
+  --color-primary-darker: #d64c7e;
+  --color-primary-darkest: #e86e99;
+  --color-primary-light: #dcbec9;
+  --color-primary-contrast-offset: #d64c7e;
+}
+
+/* Force light mode for landing pages */
+.force-light-mode,
+.force-light-mode * {
+  /* Override all dark mode variables with light mode values */
+  --home-background: 0 0% 100% !important;
+  --home-foreground: 0 0% 15% !important;
+  --home-surface: 0 0% 96% !important;
+  --home-surface-hover: 0 0% 92% !important;
+  --home-primary: 140 50% 45% !important;
+  --home-primary-hover: 140 50% 50% !important;
+  --home-primary-foreground: 0 0% 100% !important;
+  --home-secondary: 220 70% 50% !important;
+  --home-secondary-hover: 220 70% 55% !important;
+  --home-secondary-foreground: 0 0% 100% !important;
+  --background: 0 0% 100% !important;
+  --foreground: 0 0% 15% !important;
+  --surface: 0 0% 96% !important;
+  --surface-hover: 0 0% 92% !important;
+  --primary: 140 50% 45% !important;
+  --primary-hover: 140 50% 50% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --secondary: 220 70% 50% !important;
+  --secondary-hover: 220 70% 55% !important;
+  --secondary-foreground: 0 0% 100% !important;
+  --success: 140 50% 45% !important;
+  --success-hover: 140 50% 50% !important;
+  --warning: 31 91% 65% !important;
+  --danger: 0 84% 65% !important;
+  --card: 0 0% 100% !important;
+  --card-foreground: 0 0% 15% !important;
+  --card-hover: 0 0% 96% !important;
+  --popover: 0 0% 100% !important;
+  --popover-foreground: 0 0% 15% !important;
+  --muted: 0 0% 88% !important;
+  --muted-foreground: 0 0% 40% !important;
+  --accent: 0 0% 92% !important;
+  --accent-foreground: 0 0% 15% !important;
+  --accent-hover: 0 0% 88% !important;
+  --destructive: 0 84% 65% !important;
+  --destructive-foreground: 0 0% 100% !important;
+  --border: 0 0% 88% !important;
+  --input: 0 0% 100% !important;
+  --ring: 140 50% 45% !important;
+  --sidebar-background: 0 0% 98% !important;
+  --sidebar-foreground: 240 5.3% 26.1% !important;
+  --sidebar-primary: 240 5.9% 10% !important;
+  --sidebar-primary-foreground: 0 0% 98% !important;
+  --sidebar-accent: 240 4.8% 95.9% !important;
+  --sidebar-accent-foreground: 240 5.9% 10% !important;
+  --sidebar-border: 220 13% 91% !important;
+  --sidebar-ring: 217.2 91.2% 59.8% !important;
+}
+
+.force-light-mode {
+  color-scheme: light !important;
+  background-color: hsl(var(--home-background)) !important;
+  color: hsl(var(--home-foreground)) !important;
+}
+
+.force-light-mode.dark,
+.dark .force-light-mode,
+.dark .force-light-mode * {
+  /* Remove dark class effects */
+  background-color: hsl(var(--home-background)) !important;
+  color: hsl(var(--home-foreground)) !important;
+}
+
+/* Override Tailwind dark mode classes within force-light-mode */
+.force-light-mode .dark\:bg-card,
+.force-light-mode .dark\:bg-home-surface,
+.force-light-mode .dark\:bg-background,
+.force-light-mode .dark\:text-foreground,
+.force-light-mode .dark\:text-home-foreground,
+.force-light-mode .dark\:border-gray-700 {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+  border-color: hsl(var(--border)) !important;
 }

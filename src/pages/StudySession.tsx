@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft, Book } from "lucide-react";
 import Whiteboard from "@/components/Whiteboard";
 
 const StudySession = () => {
@@ -25,9 +25,9 @@ const StudySession = () => {
               </Button>
             </Link>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
+                <Book className="w-5 h-5 text-white" />
               </div>
               <span className="text-lg font-bold text-foreground">MarkIt</span>
             </div>

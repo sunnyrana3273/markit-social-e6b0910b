@@ -15,7 +15,7 @@ import {
   File,
   FileText,
   Image as ImageIcon,
-  BookUp,
+  Book,
   Moon,
   Sun
 } from "lucide-react";
@@ -280,9 +280,9 @@ const Dashboard = () => {
       <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-1">
+            <Link to="/" className="flex items-center gap-1.5">
               <div className="w-8 h-8 flex items-center justify-center">
-                <BookUp className="w-5 h-5 text-home-primary " />
+                <Book className="w-5 h-5 text-home-primary " />
               </div>
               <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
             </Link>
@@ -438,47 +438,6 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            {/* Recent Generated Problem Sets */}
-            <Card className="p-6 bg-card border border-border">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-home-foreground">Recent Generated Problem Sets</h2>
-              </div>
-              
-              <div className="space-y-3">
-                {recentProblemSets.length > 0 ? (
-                  recentProblemSets.map((problemSet) => (
-                    <div key={problemSet.id} className="flex items-center justify-between p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors cursor-pointer">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-home-secondary/10 rounded-lg flex items-center justify-center text-home-secondary">
-                          <BookOpen className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-home-foreground truncate max-w-md">{problemSet.title}</h3>
-                          <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                            <span>{problemSet.problem_count} {problemSet.problem_count === 1 ? 'problem' : 'problems'}</span>
-                            <span>•</span>
-                            <span>{formatRelativeTime(problemSet.created_at)}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="border-home-secondary text-home-secondary hover:bg-home-secondary hover:text-white"
-                      >
-                        Open
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-gray-600 dark:text-gray-400">
-                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="mb-2">No problem sets yet</p>
-                    <p className="text-sm">Generate your first problem set to get started!</p>
-                  </div>
-                )}
-              </div>
-            </Card>
           </div>
         </div>
       </div>

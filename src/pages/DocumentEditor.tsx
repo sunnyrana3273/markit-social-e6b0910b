@@ -357,6 +357,7 @@ const DocumentEditor: React.FC = () => {
     return savedMessages ? JSON.parse(savedMessages) : [];
   });
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [currentChatFriend, setCurrentChatFriend] = useState<Friend | null>(null);
   const [showFriendChat, setShowFriendChat] = useState(false);
   const [friendMessages, setFriendMessages] = useState<Array<{ id: string; sender_id: string; receiver_id: string; message: string; created_at: string; read_at: string | null }>>([]);
@@ -1521,6 +1522,45 @@ const DocumentEditor: React.FC = () => {
     return summarizeToSteps(messageContent);
   };
 
+  const stripLatexToPlainText = (input: string) => {
+    let output = input;
+
+    // 1) Replace structural LaTeX wrappers but preserve semantic info
+    // \boxed{...} → inner text
+    output = output.replace(/\\boxed\{([^}]*)\}/g, '$1');
+
+    // \frac{a}{b}, \tfrac{a}{b}, \dfrac{a}{b}, \cfrac{a}{b} → "a / b"
+    output = output.replace(/\\(?:frac|tfrac|dfrac|cfrac)\s*\{([^}]*)\}\s*\{([^}]*)\}/g, '$1 / $2');
+    // Also handle rare no-brace forms: \frac a b → "a / b"
+    output = output.replace(/\\(?:frac|tfrac|dfrac|cfrac)\s+([^\s{}]+)\s+([^\s{}]+)/g, '$1 / $2');
+
+    // \sqrt{a} → "sqrt(a)"
+    output = output.replace(/\\sqrt\s*\{([^}]*)\}/g, 'sqrt($1)');
+
+    // Remove inline and display math delimiters \(...\), \[...\]
+    output = output.replace(/\\\(|\\\)/g, '');
+    output = output.replace(/\\\[|\\\]/g, '');
+
+    // 2) Map common math operators to ASCII equivalents
+    output = output.replace(/\\cdot/g, ' * ');
+    output = output.replace(/\\times/g, ' * ');
+    output = output.replace(/\\pm/g, ' +/- ');
+    output = output.replace(/\\leq/g, ' <=');
+    output = output.replace(/\\geq/g, ' >=');
+    output = output.replace(/\\neq/g, ' != ');
+    output = output.replace(/\\Longrightarrow|\\Rightarrow|\\rightarrow/g, ' -> ');
+
+    // 3) Strip any remaining LaTeX commands (best-effort)
+    output = output.replace(/\\[a-zA-Z]+/g, '');
+
+    // 4) Normalize whitespace
+    output = output.replace(/\s+\n/g, '\n');
+    output = output.replace(/\n{3,}/g, '\n\n');
+    output = output.replace(/[ \t]{2,}/g, ' ');
+
+    return output.trim();
+  };
+
   const ensureLatexDelimiters = (input: string) => {
     let output = input;
     const inlineTargets = [
@@ -1544,8 +1584,9 @@ const DocumentEditor: React.FC = () => {
     // Otherwise, process it through generateExpandedSteps (for backward compatibility with old messages)
     const isAlreadyProcessed = messageContent.trim().toLowerCase().startsWith('step');
     const steps = isAlreadyProcessed ? ensureLatexDelimiters(messageContent) : await generateExpandedSteps(messageContent);
-    addTextToCanvas(steps);
-    console.debug('[AI] Added to whiteboard:', steps);
+    const plainText = stripLatexToPlainText(steps);
+    addTextToCanvas(plainText);
+    console.debug('[AI] Added to whiteboard (plain text):', plainText);
   };
 
   const incrementProblemsSolvedToday = () => {
@@ -1586,12 +1627,15 @@ const DocumentEditor: React.FC = () => {
       };
 
       let dataURL = makeDataUrl(1400, 0.8);
+      const lastAssistant = [...chatMessages].reverse().find(m => m.role === 'assistant')?.content || '';
+
       let resp = await fetch('http://localhost:3001/api/generate-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image: dataURL,
-          instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.'
+          instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.',
+          context: lastAssistant
         })
       });
       console.debug('[generate-question] Response status', resp.status, resp.ok);
@@ -1605,7 +1649,8 @@ const DocumentEditor: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             image: dataURL,
-            instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.'
+            instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.',
+            context: lastAssistant
           })
         });
         console.debug('[generate-question] Retry response status', resp.status, resp.ok);
@@ -1622,7 +1667,8 @@ const DocumentEditor: React.FC = () => {
     } catch (e) {
       console.warn('[generate-question] Error, falling back:', e);
     }
-    // Fallback: heuristic based on the latest assistant message/topic
+    // Fallback: heuristic based on the latest assistant message/topic.
+    // We now return a concrete, human-readable problem instead of an instruction.
     try {
       const lastAssistant = [...chatMessages].reverse().find(m => m.role === 'assistant')?.content || '';
       const extractTopic = (input: string) => {
@@ -1636,18 +1682,28 @@ const DocumentEditor: React.FC = () => {
         const match = plain.match(/([A-Za-z0-9\/\- ]{10,120})/);
         return (match ? match[0] : plain).trim();
       };
-      const topic = extractTopic(lastAssistant);
+      const topic = extractTopic(lastAssistant).toLowerCase();
       if (topic) {
-        return `Create a new problem related to "${topic}". State the question clearly in plain English.`;
+        if (topic.includes('slope')) {
+          // Concrete example problem for slope-related topics
+          return 'A line passes through the points (2, 5) and (8, 17). Compute the slope of this line.';
+        }
+        // Generic concrete problem template for other topics
+        return `Based on your current notes, create a self-contained practice problem about this topic: ${topic}. Clearly state the question in plain English so it can be solved without seeing the original whiteboard.`;
       }
     } catch (_) {}
-    return 'Write a clear, self-contained practice problem closely related to the current topic shown on the whiteboard. Use plain English only.';
+    return 'Create a clear, self-contained practice problem that matches the current topic you are studying. State the question in plain English so it can be solved without seeing the whiteboard.';
   };
 
   const handleAddPracticeQuestion = async () => {
-    const question = await generatePracticeQuestionFromScene();
-    addTextToCanvas(question);
-    incrementProblemsSolvedToday();
+    try {
+      setIsGeneratingQuestion(true);
+      const question = await generatePracticeQuestionFromScene();
+      addTextToCanvas(question);
+      incrementProblemsSolvedToday();
+    } finally {
+      setIsGeneratingQuestion(false);
+    }
   };
 
 
@@ -1672,7 +1728,7 @@ const DocumentEditor: React.FC = () => {
           variant="outline"
           onClick={() => navigate('/app')}
           size="sm"
-          className="bg-white shadow-md"
+          className="bg-card dark:bg-card shadow-md border-border"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Dashboard
@@ -1682,14 +1738,14 @@ const DocumentEditor: React.FC = () => {
       {/* Friends List Overlay */}
       {showFriends && (
         <div className="absolute top-16 left-4 z-50">
-          <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 w-64">
+          <div className="bg-white/95 dark:bg-card/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 dark:border-border w-64">
             {/* Header */}
-            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+            <div className="p-3 border-b border-gray-200 dark:border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-home-primary" />
                 <div className="flex flex-col leading-tight">
-                  <h3 className="text-sm font-semibold text-gray-900">Stuck on a problem?</h3>
-                  <span className="text-xs text-gray-600">Ask a friend!</span>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-home-foreground">Stuck on a problem?</h3>
+                  <span className="text-xs text-gray-600 dark:text-gray-400">Ask a friend!</span>
                 </div>
               </div>
               <Button
@@ -1708,7 +1764,7 @@ const DocumentEditor: React.FC = () => {
                   friends.map((friend) => (
                     <div
                       key={friend.id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors group"
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer transition-colors group"
                       onClick={() => handleAskFriend(friend)}
                     >
                       <Avatar className="w-9 h-9">
@@ -1718,16 +1774,16 @@ const DocumentEditor: React.FC = () => {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
+                        <p className="text-sm font-medium text-gray-900 dark:text-home-foreground truncate">
                           {getDisplayName(friend)}
                         </p>
-                        <p className="text-xs text-gray-500">Ask for help</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Ask for help</p>
                       </div>
-                      <MessageSquare className="w-4 h-4 text-gray-400 group-hover:text-home-primary transition-colors" />
+                      <MessageSquare className="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-home-primary transition-colors" />
                     </div>
                   ))
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <UserPlus className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No friends to invite</p>
                   <Button
@@ -1744,7 +1800,7 @@ const DocumentEditor: React.FC = () => {
 
             {/* View All Button */}
             {friends.length > 0 && (
-              <div className="p-2 border-t border-gray-200">
+              <div className="p-2 border-t border-gray-200 dark:border-border">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1782,7 +1838,7 @@ const DocumentEditor: React.FC = () => {
                     }
                   }
                 }}
-                className={`bg-white shadow-md ${(showChatInput || showChatSidebar) ? 'bg-blue-50 border-blue-300' : ''}`}
+                className={`bg-card dark:bg-card shadow-md border-border ${(showChatInput || showChatSidebar) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}`}
                 title={showChatSidebar ? "Close chat" : "Open chat"}
               >
                 <MessageSquare className="w-4 h-4" />
@@ -1796,7 +1852,7 @@ const DocumentEditor: React.FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowFriends(true)}
-                  className="bg-white shadow-md"
+                  className="bg-card dark:bg-card shadow-md border-border"
                 >
                   <Users className="w-4 h-4" />
                 </Button>
@@ -1815,13 +1871,13 @@ const DocumentEditor: React.FC = () => {
           onClick={(e) => e.stopPropagation()}
         >
           <form onSubmit={handleChatSubmit} className="flex items-center">
-            <div className="relative bg-gray-900 border border-gray-700 rounded-full px-4 py-3 flex items-center gap-3 shadow-lg min-w-80">
+            <div className="relative bg-gray-900 dark:bg-gray-800 border border-gray-700 dark:border-gray-600 rounded-full px-4 py-3 flex items-center gap-3 shadow-lg min-w-80">
               {/* Draggable handle area - left side */}
               <div 
                 className="absolute left-0 top-0 bottom-0 w-8 cursor-grab active:cursor-grabbing flex items-center justify-center"
                 onMouseDown={handleMouseDown}
               >
-                <Move className="w-4 h-4 text-gray-400" />
+                <Move className="w-4 h-4 text-gray-400 dark:text-gray-300" />
               </div>
               
               {/* Input field */}
@@ -1830,7 +1886,7 @@ const DocumentEditor: React.FC = () => {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Ask a question about the whiteboard..."
-                className="bg-transparent text-gray-200 placeholder-gray-400 flex-1 outline-none text-sm ml-8"
+                className="bg-transparent text-gray-200 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 flex-1 outline-none text-sm ml-8"
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -1843,7 +1899,7 @@ const DocumentEditor: React.FC = () => {
               />
               
               {/* Command key icon */}
-              <div className="flex items-center gap-1 text-gray-400 text-xs">
+              <div className="flex items-center gap-1 text-gray-400 dark:text-gray-300 text-xs">
                 <Command className="w-3 h-3" />
                 <span>+ I</span>
               </div>
@@ -1851,7 +1907,7 @@ const DocumentEditor: React.FC = () => {
               {/* Send button */}
               <button
                 type="submit"
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 transition-colors"
+                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-full p-2 transition-colors"
                 disabled={!chatInput.trim()}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -1871,14 +1927,14 @@ const DocumentEditor: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => setIsPdfScrollerMinimized(false)}
-              className="bg-white/95 backdrop-blur-sm shadow-xl border border-gray-200 hover:bg-white"
+              className="bg-white/95 dark:bg-card/95 backdrop-blur-sm shadow-xl border border-gray-200 dark:border-border hover:bg-white dark:hover:bg-card"
             >
               <ChevronUp className="w-4 h-4 mr-2" />
               Select from {pdfPages.length} {pdfPages.length === 1 ? 'page' : 'pages'}
             </Button>
           ) : (
             // Expanded state - full scroller
-            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-xl p-3 border border-gray-200">
+            <div className="bg-white/95 dark:bg-card/95 backdrop-blur-sm rounded-lg shadow-xl p-3 border border-gray-200 dark:border-border">
               <div className="flex items-center gap-2">
                 {/* Left scroll button */}
                 <Button
@@ -1946,21 +2002,21 @@ const DocumentEditor: React.FC = () => {
         {isTimerMinimized ? (
           // Minimized state - just icon
           <div 
-            className={`bg-white/95 backdrop-blur-sm rounded-full shadow-xl border border-gray-200 p-2 cursor-pointer ${!isTimerActive ? 'opacity-60' : ''}`}
+            className={`bg-white/95 dark:bg-card/95 backdrop-blur-sm rounded-full shadow-xl border border-gray-200 dark:border-border p-2 cursor-pointer ${!isTimerActive ? 'opacity-60' : ''}`}
             onClick={() => setIsTimerMinimized(false)}
             title={`${formatTime(totalStudyTime)} - ${isTimerActive ? 'Studying' : 'Paused'}`}
           >
-            <Timer className={`w-4 h-4 ${isTimerActive ? 'text-green-600' : 'text-gray-400'}`} />
+            <Timer className={`w-4 h-4 ${isTimerActive ? 'text-green-600 dark:text-green-500' : 'text-gray-400 dark:text-gray-500'}`} />
           </div>
         ) : (
           // Expanded state - full timer
-          <div className={`bg-white/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 px-3 py-2 flex items-center gap-2 ${!isTimerActive ? 'opacity-60' : ''}`}>
-            <Timer className={`w-4 h-4 ${isTimerActive ? 'text-green-600' : 'text-gray-400'}`} />
+          <div className={`bg-white/95 dark:bg-card/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-200 dark:border-border px-3 py-2 flex items-center gap-2 ${!isTimerActive ? 'opacity-60' : ''}`}>
+            <Timer className={`w-4 h-4 ${isTimerActive ? 'text-green-600 dark:text-green-500' : 'text-gray-400 dark:text-gray-500'}`} />
             <div className="flex flex-col cursor-pointer" onClick={() => setIsTimerMinimized(true)}>
-              <span className="text-sm font-semibold text-gray-900">
+              <span className="text-sm font-semibold text-gray-900 dark:text-home-foreground">
                 {formatTime(totalStudyTime)}
               </span>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
                 {isTimerActive ? 'Studying' : 'Paused'}
               </span>
             </div>
@@ -1970,15 +2026,15 @@ const DocumentEditor: React.FC = () => {
 
       {/* Chat Sidebar (AI only) */}
       {showChatSidebar && (
-        <div className="absolute right-0 top-0 bottom-0 w-96 bg-white/95 backdrop-blur-sm shadow-xl border-l border-gray-200 z-[100] flex flex-col transition-all duration-300 overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 w-96 bg-gray-50/95 dark:bg-home-surface/95 backdrop-blur-sm shadow-xl border-l border-gray-200 dark:border-border z-[100] flex flex-col transition-all duration-300 overflow-hidden">
           {/* Header */}
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 dark:border-border">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-gray-700" />
-                <h3 className="font-semibold text-gray-900">AI Chat</h3>
+                <MessageSquare className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                <h3 className="font-semibold text-gray-900 dark:text-home-foreground">AI Chat</h3>
                 {chatMessages.length > 0 && (
-                  <span className="text-xs text-gray-500 ml-2">({chatMessages.length} messages)</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({chatMessages.length} messages)</span>
                 )}
               </div>
               <Button 
@@ -1998,8 +2054,8 @@ const DocumentEditor: React.FC = () => {
           <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-0">
             {chatMessages.length === 0 ? (
               <div className="text-center py-8">
-                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400 opacity-50" />
-                <p className="text-sm text-gray-500">Start a conversation</p>
+                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-500 opacity-50" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">Start a conversation</p>
               </div>
             ) : (
               <>
@@ -2011,8 +2067,8 @@ const DocumentEditor: React.FC = () => {
                     <div
                       className={`max-w-[92%] rounded-lg px-3 py-3 space-y-2 ${
                         message.role === 'user'
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-100 text-gray-900'
+                          ? 'bg-blue-600 dark:bg-blue-500 text-white'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
                       }`}
                     >
                       {message.role === 'assistant' ? (
@@ -2033,10 +2089,20 @@ const DocumentEditor: React.FC = () => {
                             variant="outline"
                             size="sm"
                             onClick={handleAddPracticeQuestion}
+                            disabled={isGeneratingQuestion}
                             className="mt-2 w-full text-[10px] leading-tight py-1"
                           >
-                            <Plus className="w-3 h-3 mr-1.5" />
-                            Add Practice Question to Whiteboard
+                            {isGeneratingQuestion ? (
+                              <>
+                                <Spinner size="xs" className="mr-1.5" />
+                                Generating Practice Question...
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3 h-3 mr-1.5" />
+                                Add Practice Question to Whiteboard
+                              </>
+                            )}
                           </Button>
                         </div>
                       ) : (
@@ -2051,8 +2117,8 @@ const DocumentEditor: React.FC = () => {
                 ))}
                 {isChatLoading && (
                   <div className="flex justify-start">
-                    <div className="bg-gray-100 text-gray-900 rounded-lg px-4 py-2 flex items-center gap-2">
-                      <Spinner size="sm" className="text-gray-600" />
+                    <div className="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg px-4 py-2 flex items-center gap-2">
+                      <Spinner size="sm" className="text-gray-600 dark:text-gray-400" />
                       <p className="text-sm">Thinking...</p>
                     </div>
                   </div>
@@ -2062,20 +2128,20 @@ const DocumentEditor: React.FC = () => {
           </div>
           
           {/* Input Area */}
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-gray-200 dark:border-border">
             <form onSubmit={handleChatSubmit} className="flex gap-2">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder={chatMessages.length === 0 ? "Ask a question about the whiteboard..." : "Ask a follow-up question..."}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 bg-background dark:bg-input text-foreground"
                 disabled={isChatLoading}
               />
               <Button
                 type="submit"
                 disabled={!chatInput.trim() || isChatLoading}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
               >
                 <Send className="w-4 h-4" />
               </Button>
@@ -2092,7 +2158,7 @@ const DocumentEditor: React.FC = () => {
                     }
                   }
                 }}
-                className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                className="mt-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 Clear chat history
               </Button>
@@ -2102,13 +2168,14 @@ const DocumentEditor: React.FC = () => {
       )}
 
       {/* Full page Excalidraw */}
-      <div className="absolute inset-0" style={{ width: "100%", height: "100%" }}>
+      <div className="absolute inset-0 excalidraw-wrapper" style={{ width: "100%", height: "100%" }}>
         <div className={theme === 'dark' ? 'excalidraw theme--dark' : 'excalidraw'}>
-          <Excalidraw
-            initialData={savedInitialData ?? initialData}
-            onChange={handleExcalidrawChange}
-            excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          />
+        <Excalidraw
+          initialData={savedInitialData ?? initialData}
+          onChange={handleExcalidrawChange}
+          excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          theme={theme === 'dark' ? 'dark' : 'light'}
+        />
         </div>
       </div>
 

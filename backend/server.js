@@ -285,14 +285,14 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
  */
 app.post('/api/generate-question', async (req, res) => {
   try {
-    const { image, instructions } = req.body;
+    const { image, instructions, context } = req.body;
     
     if (!image) {
       console.warn('[generate-question] Missing image in request body');
       return res.status(400).json({ success: false, error: 'No image provided' });
     }
 
-    const prompt = (instructions || '').trim() || [
+    const baseInstructions = (instructions || '').trim() || [
       'You are given a screenshot of a whiteboard from a study session.',
       'Create ONE new, related practice problem based strictly on the topics and context visible in the screenshot.',
       'Rules:',
@@ -304,9 +304,15 @@ app.post('/api/generate-question', async (req, res) => {
       '- Make it self-contained and solvable without referencing the screenshot.',
     ].join(' ');
 
+    const contextSnippet = (context || '').trim();
+    const prompt = contextSnippet
+      ? `${baseInstructions}\n\nAdditional context from a worked solution (do NOT copy it, just use as guidance for topic and difficulty):\n${contextSnippet.substring(0, 2000)}`
+      : baseInstructions;
+
     console.log('[generate-question] Request received', {
       imageLength: typeof image === 'string' ? image.length : null,
       promptLength: prompt.length,
+      hasContext: !!contextSnippet,
     });
 
     // Primary attempt: Vision completion with image
@@ -326,8 +332,15 @@ app.post('/api/generate-question', async (req, res) => {
           ],
         },
       ],
-      max_completion_tokens: 600,
+      max_completion_tokens: 4000,
     });
+
+    // Debug: log full primary response (without API key)
+    try {
+      console.log('[generate-question] Primary OpenAI response raw:', JSON.stringify(response, null, 2));
+    } catch (e) {
+      console.warn('[generate-question] Failed to stringify primary response', e);
+    }
 
     const choice = response?.choices?.[0]?.message?.content;
     console.log('[generate-question] OpenAI response meta', {
@@ -353,8 +366,15 @@ app.post('/api/generate-question', async (req, res) => {
           ],
         },
       ],
-      max_completion_tokens: 2000,
+      max_completion_tokens: 4000,
     });
+    // Debug: log extraction response
+    try {
+      console.log('[generate-question] Extract OpenAI response raw:', JSON.stringify(extractResp, null, 2));
+    } catch (e) {
+      console.warn('[generate-question] Failed to stringify extract response', e);
+    }
+
     const extracted = extractResp?.choices?.[0]?.message?.content || '';
     console.log('[generate-question] Extracted text length', extracted.length);
 
@@ -366,6 +386,7 @@ app.post('/api/generate-question', async (req, res) => {
       'Output ONLY the problem statement, self-contained and solvable.',
       'Notes:',
       extracted.substring(0, 4000),
+      contextSnippet ? '\nAdditional context from a worked solution (do NOT copy it):\n' + contextSnippet.substring(0, 2000) : ''
     ].join('\n');
 
     const textOnlyResp = await openai.chat.completions.create({
@@ -375,11 +396,26 @@ app.post('/api/generate-question', async (req, res) => {
       ],
       max_completion_tokens: 600,
     });
+    // Debug: log text-only generation response
+    try {
+      console.log('[generate-question] Text-only OpenAI response raw:', JSON.stringify(textOnlyResp, null, 2));
+    } catch (e) {
+      console.warn('[generate-question] Failed to stringify text-only response', e);
+    }
+
     const textOnlyChoice = textOnlyResp?.choices?.[0]?.message?.content || '';
     console.log('[generate-question] Text-only generation content length', textOnlyChoice.length);
 
     if (textOnlyChoice && textOnlyChoice.trim()) {
       const question = textOnlyChoice.trim();
+      return res.json({ success: true, question, timestamp: new Date().toISOString() });
+    }
+
+    // Fallback: if text-only generation is empty but we have extracted text,
+    // return the extracted question/statement as the practice question.
+    if (extracted && extracted.trim()) {
+      console.warn('[generate-question] Using extracted text as fallback practice question');
+      const question = extracted.trim();
       return res.json({ success: true, question, timestamp: new Date().toISOString() });
     }
 

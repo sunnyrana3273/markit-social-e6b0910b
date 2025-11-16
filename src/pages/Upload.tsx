@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+  Book,
   BookOpen,
   Upload as UploadIcon,
   File,
@@ -274,11 +275,11 @@ const Upload = () => {
       <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-1.5">
               <div className="w-8 h-8 bg-home-primary rounded-lg flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-white" />
+                <Book className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
+              <span className="text-xl font-bold text-home-foreground">MarkIt</span>
             </Link>
             
             <nav className="hidden md:flex items-center gap-4">

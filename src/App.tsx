@@ -22,29 +22,29 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <ThemeProvider>
-    <QueryClientProvider client={queryClient}>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-            <Route path="/features" element={<Features />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/app" element={<Dashboard />} />
-            <Route path="/upload" element={<Upload />} />
-            <Route path="/document/:fileId" element={<DocumentEditor />} />
-            <Route path="/communities" element={<Communities />} />
-            <Route path="/community/:communityId" element={<CourseCommunity />} />
-            <Route path="/friends" element={<Friends />} />
-            <Route path="/session/:sessionId" element={<StudySession />} />
-            <Route path="/session/new" element={<StudySession />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-    </QueryClientProvider>
+  <QueryClientProvider client={queryClient}>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+          <Route path="/features" element={<Features />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/app" element={<Dashboard />} />
+          <Route path="/upload" element={<Upload />} />
+          <Route path="/document/:fileId" element={<DocumentEditor />} />
+          <Route path="/communities" element={<Communities />} />
+          <Route path="/community/:communityId" element={<CourseCommunity />} />
+          <Route path="/friends" element={<Friends />} />
+          <Route path="/session/:sessionId" element={<StudySession />} />
+          <Route path="/session/new" element={<StudySession />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+  </QueryClientProvider>
   </ThemeProvider>
 );
 

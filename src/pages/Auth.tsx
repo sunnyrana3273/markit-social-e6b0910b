@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BookOpen, ArrowLeft } from "lucide-react";
+import { Book, ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -78,34 +78,34 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4 py-12 force-light-mode">
       <div className="w-full max-w-md relative">
         {/* Back to home link */}
         <Link 
           to="/" 
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-8"
+          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-10"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Home
         </Link>
 
-        <Card className="p-8 bg-card shadow-card">
+        <Card className="p-10 bg-card shadow-card">
           {/* Logo */}
-          <div className="flex items-center gap-2 justify-center mb-8">
-            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-white" />
+          <div className="flex items-center gap-1.5 justify-center mb-10">
+            <div className="w-10 h-10 flex items-center justify-center">
+              <Book className="w-6 h-6 text-home-primary" />
             </div>
             <span className="text-2xl font-bold text-foreground">MarkIt</span>
           </div>
 
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-2 mb-8">
               <TabsTrigger value="login">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="login" className="space-y-6">
-              <div className="text-center">
+            <TabsContent value="login" className="space-y-8">
+              <div className="text-center space-y-2">
                 <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
                 <p className="text-muted-foreground">Sign in to continue your learning journey</p>
               </div>
@@ -127,11 +127,11 @@ const Auth = () => {
               </Button>
             </TabsContent>
 
-            <TabsContent value="signup" className="space-y-6">
-              <div className="text-center">
+            <TabsContent value="signup" className="space-y-8">
+              <div className="text-center space-y-3">
                 <h2 className="text-2xl font-bold text-foreground">Create account</h2>
                 <p className="text-muted-foreground">Join thousands of students learning together</p>
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs text-muted-foreground pt-2">
                   💡 Consider using your school email to find communities easier
                 </p>
               </div>
@@ -152,7 +152,7 @@ const Auth = () => {
                 {isGoogleLoading ? "Connecting..." : "Continue with Google"}
               </Button>
 
-              <div className="text-center text-sm text-muted-foreground">
+              <div className="text-center text-sm text-muted-foreground pt-2">
                 By signing up, you agree to our{" "}
                 <Link to="/terms" className="text-primary hover:underline">
                   Terms of Service
@@ -166,7 +166,7 @@ const Auth = () => {
           </Tabs>
         </Card>
 
-        <div className="text-center mt-6 text-sm text-muted-foreground">
+        <div className="text-center mt-10 text-sm text-muted-foreground">
           Need help? <Link to="/support" className="text-primary hover:underline">Contact Support</Link>
         </div>
       </div>

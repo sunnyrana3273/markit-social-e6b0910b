@@ -10,7 +10,7 @@ import {
   Search,
   Bell,
   Settings,
-  BookUp,
+  Book,
   ChevronDown,
   ChevronUp
 } from "lucide-react";
@@ -189,9 +189,9 @@ const Communities = () => {
       <header className="border-b border-gray-200 dark:border-gray-700 bg-home-surface/80 dark:bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link to="/" className="flex items-center gap-1">
+            <Link to="/" className="flex items-center gap-1.5">
               <div className="w-8 h-8 flex items-center justify-center">
-                <BookUp className="w-5 h-5 text-home-primary " />
+                <Book className="w-5 h-5 text-home-primary " />
               </div>
               <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
             </Link>
@@ -261,10 +261,10 @@ const Communities = () => {
                   <Button variant="outline" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
                     All Subjects
                   </Button>
-                  <Button variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-100">
+                  <Button variant="outline" className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent">
                     AP Courses
                   </Button>
-                  <Button variant="outline" className="border-gray-300 text-gray-600 hover:bg-gray-100">
+                  <Button variant="outline" className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent">
                     SAT Prep
                   </Button>
                 </div>
@@ -283,7 +283,7 @@ const Communities = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsMyCommunitiesMinimized(!isMyCommunitiesMinimized)}
-                    className="text-home-foreground hover:bg-gray-100"
+                    className="text-home-foreground hover:bg-home-surface dark:hover:bg-accent"
                   >
                     {isMyCommunitiesMinimized ? (
                       <>
@@ -335,7 +335,7 @@ const Communities = () => {
                   variant="ghost"
                   size="sm"
                   onClick={() => setIsCommunitiesMinimized(!isCommunitiesMinimized)}
-                  className="text-home-foreground hover:bg-gray-100"
+                  className="text-home-foreground hover:bg-home-surface dark:hover:bg-accent"
                 >
                   {isCommunitiesMinimized ? (
                     <>

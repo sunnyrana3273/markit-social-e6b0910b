@@ -15,21 +15,21 @@ import {
   TrendingUp,
   CheckCircle2,
   ChevronRight,
-  BookUp
+  Book
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Features = () => {
   return (
-    <div className="min-h-screen bg-home-background font-lexend">
+    <div className="min-h-screen bg-home-background font-lexend force-light-mode">
       {/* Header */}
       <header className="border-b border-gray-200 bg-home-surface/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-1">
-              <div className="w-8 h-8 flex items-center justify-center">
-                <BookUp className="w-5 h-5 text-home-primary " />
-              </div>
-            <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
+          <Link to="/" className="flex items-center gap-1.5">
+            <div className="w-8 h-8 flex items-center justify-center">
+              <Book className="w-5 h-5 text-home-primary " />
+            </div>
+            <span className="text-xl font-bold text-home-foreground">MarkIt</span>
           </Link>
           
           <nav className="hidden md:flex items-center gap-6">
@@ -118,8 +118,8 @@ const Features = () => {
               },
               {
                 icon: Video,
-                title: "Voice & Video Calls",
-                description: "Jump into high-quality voice or video calls instantly during study sessions. Perfect for explaining complex problems or group study.",
+                title: "Voice Calls",
+                description: "Jump into high-quality voice calls instantly during study sessions. Perfect for explaining complex problems or group study.",
                 features: ["HD video calls", "Crystal-clear audio", "Screen sharing", "Recording options"]
               },
               {
@@ -254,11 +254,11 @@ const Features = () => {
       <footer className="border-t border-gray-200 bg-white py-12">
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center">
-            <Link to="/" className="flex items-center gap-1 mb-4 md:mb-0">
+            <Link to="/" className="flex items-center gap-1.5 mb-4 md:mb-0">
               <div className="w-8 h-8 flex items-center justify-center">
-                <BookUp className="w-5 h-5 text-home-primary " />
+                <Book className="w-5 h-5 text-home-primary " />
               </div>
-              <span className="text-xl font-bold text-home-foreground font-homemade">MarkIt</span>
+              <span className="text-xl font-bold text-home-foreground">MarkIt</span>
             </Link>
             
             <div className="flex gap-6 text-sm text-gray-600">

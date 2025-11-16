@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, CheckCircle2, Loader2 } from "lucide-react";
+import { Book, BookOpen, CheckCircle2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -190,12 +190,12 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4 force-light-mode">
       <Card className="w-full max-w-2xl p-8 bg-card shadow-card">
         {/* Logo */}
-        <div className="flex items-center gap-2 justify-center mb-8">
+        <div className="flex items-center gap-1.5 justify-center mb-8">
           <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
-            <BookOpen className="w-6 h-6 text-white" />
+            <Book className="w-6 h-6 text-white" />
           </div>
           <span className="text-2xl font-bold text-foreground">MarkIt</span>
         </div>

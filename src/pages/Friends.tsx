@@ -112,7 +112,25 @@ const Friends = () => {
 
   useEffect(() => {
     document.title = "MarkIt | Friends";
+    
+    // Check if chat was previously closed
+    const chatClosed = localStorage.getItem('friendsChatClosed');
+    if (chatClosed === 'true') {
+      setChatFriend(null);
+    }
   }, []);
+
+  const handleCloseChat = () => {
+    setChatFriend(null);
+    // Remember that user closed the chat
+    localStorage.setItem('friendsChatClosed', 'true');
+  };
+
+  const handleOpenChat = (friend: { id: string; name: string }) => {
+    setChatFriend(friend);
+    // Clear the closed flag when user explicitly opens a chat
+    localStorage.setItem('friendsChatClosed', 'false');
+  };
 
   useEffect(() => {
     let friendsInterval: number | undefined;
@@ -1149,7 +1167,7 @@ const Friends = () => {
                                 variant="ghost" 
                                 size="sm" 
                                 className="text-home-foreground hover:bg-home-surface"
-                                onClick={() => setChatFriend({ 
+                                onClick={() => handleOpenChat({ 
                                   id: friend.profiles.id, 
                                   name: `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email
                                 })}
@@ -1364,7 +1382,7 @@ const Friends = () => {
         <FriendChat
           friendId={chatFriend.id}
           friendName={chatFriend.name}
-          onClose={() => setChatFriend(null)}
+          onClose={handleCloseChat}
         />
       )}
     </div>

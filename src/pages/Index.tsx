@@ -268,7 +268,7 @@ const Index = () => {
                   <Badge variant="outline" className="text-xs">+ More</Badge>
                 </div>
               </div>
-            </Card>
+                </Card>
           </div>
         </div>
       </section>
@@ -498,14 +498,14 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-home-surface py-12">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-col md:flex-row justify-between items-center">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row justify-between items-center">
               <div className="flex items-center gap-1.5 mb-4 md:mb-0">
-                <div className="w-8 h-8 flex items-center justify-center">
+              <div className="w-8 h-8 flex items-center justify-center">
                   <Book className="w-5 h-5 text-home-primary" />
-                </div>
-                <span className="text-xl font-bold text-home-foreground">MarkIt</span>
               </div>
+                <span className="text-xl font-bold text-home-foreground">MarkIt</span>
+            </div>
             
             <div className="flex gap-6 text-sm text-gray-600">
               <Link to="/privacy" className="hover:text-home-foreground transition-colors">Privacy</Link>

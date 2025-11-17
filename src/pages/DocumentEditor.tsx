@@ -1702,9 +1702,9 @@ const DocumentEditor: React.FC = () => {
   const handleAddPracticeQuestion = async () => {
     try {
       setIsGeneratingQuestion(true);
-      const question = await generatePracticeQuestionFromScene();
-      addTextToCanvas(question);
-      incrementProblemsSolvedToday();
+    const question = await generatePracticeQuestionFromScene();
+    addTextToCanvas(question);
+    incrementProblemsSolvedToday();
     } finally {
       setIsGeneratingQuestion(false);
     }
@@ -2103,8 +2103,8 @@ const DocumentEditor: React.FC = () => {
                               </>
                             ) : (
                               <>
-                                <Plus className="w-3 h-3 mr-1.5" />
-                                Add Practice Question to Whiteboard
+                            <Plus className="w-3 h-3 mr-1.5" />
+                            Add Practice Question to Whiteboard
                               </>
                             )}
                           </Button>

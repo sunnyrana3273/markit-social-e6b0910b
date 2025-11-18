@@ -4,9 +4,10 @@ import { exportToCanvas } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus, Phone, BotMessageSquare, Save } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { FriendChat } from '@/components/FriendChat';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 import * as pdfjsLib from 'pdfjs-dist';
@@ -356,6 +357,9 @@ const DocumentEditor: React.FC = () => {
     const savedMessages = localStorage.getItem(`chatMessages_${fileId}`);
     return savedMessages ? JSON.parse(savedMessages) : [];
   });
+  const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
+  const [availableChatSessions, setAvailableChatSessions] = useState<Array<{ id: string; created_at: string; title: string | null }>>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [currentChatFriend, setCurrentChatFriend] = useState<Friend | null>(null);
@@ -840,6 +844,192 @@ const DocumentEditor: React.FC = () => {
     loadPdf();
   }, [fileId]);
 
+  // Function to reload chat sessions
+  const reloadChatSessions = async () => {
+    if (!currentUserId || !fileId) {
+      return [];
+    }
+    
+    try {
+      setIsLoadingSessions(true);
+      
+      const { data, error } = await supabase
+        .from('ai_chat_sessions')
+        .select('id, created_at, title')
+        .eq('user_id', currentUserId)
+        .eq('file_id', fileId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading chat sessions:', error);
+        return [];
+      }
+
+      const sessionsToSet = data || [];
+      setAvailableChatSessions(sessionsToSet);
+      
+      return sessionsToSet;
+    } catch (error: any) {
+      console.error('Error reloading chat sessions:', error);
+      return [];
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+
+  // Load available chat sessions on mount
+  useEffect(() => {
+    if (currentUserId && fileId) {
+      reloadChatSessions();
+    }
+  }, [currentUserId, fileId]);
+
+  // Save chat to Supabase
+  const saveChatToSupabase = async () => {
+    if (!currentUserId || !fileId || chatMessages.length === 0) return;
+
+    try {
+      // Create or update session
+      let sessionId = currentChatSessionId;
+      
+      if (!sessionId) {
+        // Create new session
+        const { data: sessionData, error: sessionError } = await supabase
+          .from('ai_chat_sessions')
+          .insert({
+            user_id: currentUserId,
+            file_id: fileId,
+            title: null, // Could be made editable later
+          })
+          .select()
+          .single();
+
+        if (sessionError) {
+          console.error('Error creating chat session:', sessionError);
+          alert(`Error creating chat session: ${sessionError.message || 'Unknown error'}`);
+          return;
+        }
+
+        if (!sessionData || !sessionData.id) {
+          console.error('No session data returned');
+          alert('Error: Failed to create chat session');
+          return;
+        }
+
+        sessionId = sessionData.id;
+        setCurrentChatSessionId(sessionId);
+      }
+
+      // Delete existing messages for this session
+      await supabase
+        .from('ai_chat_messages')
+        .delete()
+        .eq('session_id', sessionId);
+
+      // Insert all messages
+      const messagesToInsert = chatMessages.map((msg, index) => ({
+        session_id: sessionId,
+        role: msg.role,
+        content: msg.content,
+        message_order: index,
+      }));
+
+      const { error: messagesError } = await supabase
+        .from('ai_chat_messages')
+        .insert(messagesToInsert);
+
+      if (messagesError) {
+        console.error('Error saving messages:', messagesError);
+        alert(`Error saving messages: ${messagesError.message || 'Unknown error'}`);
+        return;
+      }
+
+      // Reload sessions list
+      await reloadChatSessions();
+
+      // Also save to localStorage as backup
+      if (fileId) {
+        localStorage.setItem(`chatMessages_${fileId}`, JSON.stringify(chatMessages));
+      }
+
+      alert('Chat saved successfully!');
+    } catch (error: any) {
+      console.error('Error saving chat:', error);
+      alert(`Unexpected error saving chat: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Load chat from Supabase
+  const loadChatFromSupabase = async (sessionId: string) => {
+    if (!sessionId) return;
+
+    try {
+      const { data: messages, error } = await supabase
+        .from('ai_chat_messages')
+        .select('role, content')
+        .eq('session_id', sessionId)
+        .order('message_order', { ascending: true });
+
+      if (error) {
+        console.error('Error loading chat messages:', error);
+        alert(`Error loading chat: ${error.message || 'Unknown error'}`);
+        return;
+      }
+
+      if (messages) {
+        const formattedMessages = messages.map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        }));
+
+        setChatMessages(formattedMessages);
+        setCurrentChatSessionId(sessionId);
+        
+        // Also save to localStorage as backup
+        if (fileId) {
+          localStorage.setItem(`chatMessages_${fileId}`, JSON.stringify(formattedMessages));
+        }
+      }
+    } catch (error: any) {
+      console.error('Error loading chat:', error);
+      alert(`Error loading chat: ${error?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Format date for display
+  const formatChatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateOnly = new Date(date);
+    dateOnly.setHours(0, 0, 0, 0);
+
+    // If same day, show relative time with "Today"
+    if (dateOnly.getTime() === today.getTime()) {
+      const diffMs = now.getTime() - date.getTime();
+      const diffMinutes = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+
+      if (diffMinutes < 1) {
+        return 'Today (just now)';
+      } else if (diffMinutes < 60) {
+        return `Today (${diffMinutes} ${diffMinutes === 1 ? 'min' : 'mins'} ago)`;
+      } else if (diffHours < 24) {
+        return `Today (${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago)`;
+      } else {
+        return 'Today';
+      }
+    } else if (dateOnly.getTime() === yesterday.getTime()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+    }
+  };
+
   // Load friends list
   useEffect(() => {
     const loadFriends = async () => {
@@ -1264,7 +1454,8 @@ const DocumentEditor: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
         e.preventDefault();
-        setShowChatInput(!showChatInput);
+        setShowChatSidebar(!showChatSidebar);
+        setShowChatInput(false);
       }
     };
 
@@ -1272,7 +1463,7 @@ const DocumentEditor: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [showChatInput]);
+  }, [showChatSidebar]);
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1322,10 +1513,8 @@ const DocumentEditor: React.FC = () => {
     setIsChatLoading(true);
     setShowChatInput(false);
     
-    // Smoothly open sidebar
-    setTimeout(() => {
-      setShowChatSidebar(true);
-    }, 100);
+    // Always open sidebar when sending a message
+    setShowChatSidebar(true);
 
     try {
       // Convert captured image to blob
@@ -1768,8 +1957,7 @@ const DocumentEditor: React.FC = () => {
                   friends.map((friend) => (
                     <div
                       key={friend.id}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer transition-colors group"
-                      onClick={() => handleAskFriend(friend)}
+                      className="flex items-center gap-3 p-2 rounded-lg transition-colors"
                     >
                       <Avatar className="w-9 h-9">
                         <AvatarImage src={friend.image_url || undefined} alt={getDisplayName(friend)} />
@@ -1783,7 +1971,19 @@ const DocumentEditor: React.FC = () => {
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Ask for help</p>
                       </div>
-                      <MessageSquare className="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-home-primary transition-colors" />
+                      <div className="flex items-center gap-4">
+                        <Phone 
+                          className="w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110"
+                          onClick={() => {
+                            // TODO: Implement call functionality
+                            console.log('Call friend:', friend.id);
+                          }}
+                        />
+                        <MessageSquare 
+                          className="w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110"
+                          onClick={() => handleAskFriend(friend)}
+                        />
+                      </div>
                     </div>
                   ))
               ) : (
@@ -1829,23 +2029,16 @@ const DocumentEditor: React.FC = () => {
                     // If sidebar is open, close it
                     setShowChatSidebar(false);
                     setShowChatInput(false);
-                  } else if (showChatInput) {
-                    // If popup is open, close it
-                    setShowChatInput(false);
                   } else {
-                    // If there are existing messages, open sidebar directly
-                    if (chatMessages.length > 0) {
-                      setShowChatSidebar(true);
-                    } else {
-                      // Open popup for first question
-                      setShowChatInput(true);
-                    }
+                    // Always open sidebar directly
+                    setShowChatSidebar(true);
+                    setShowChatInput(false);
                   }
                 }}
-                className={`bg-card dark:bg-card shadow-md border-border ${(showChatInput || showChatSidebar) ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}`}
+                className={`bg-card dark:bg-card shadow-md border-border ${showChatSidebar ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}`}
                 title={showChatSidebar ? "Close chat" : "Open chat"}
               >
-                <MessageSquare className="w-4 h-4" />
+                <BotMessageSquare className="w-4 h-4" />
               </Button>
             </div>
 
@@ -1863,8 +2056,8 @@ const DocumentEditor: React.FC = () => {
               </div>
             )}
 
-      {/* Movable Chat Input */}
-      {showChatInput && (
+      {/* Movable Chat Input - Removed, using sidebar instead */}
+      {false && showChatInput && (
         <div
           className="fixed z-50"
           style={{
@@ -2034,12 +2227,50 @@ const DocumentEditor: React.FC = () => {
           {/* Header */}
           <div className="p-4 border-b border-gray-200 dark:border-border">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-                <h3 className="font-semibold text-gray-900 dark:text-home-foreground">AI Chat</h3>
-                {chatMessages.length > 0 && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({chatMessages.length} messages)</span>
-                )}
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <BotMessageSquare className="w-5 h-5 text-gray-700 dark:text-gray-300 flex-shrink-0" />
+                <h3 className="font-semibold text-gray-900 dark:text-home-foreground flex-shrink-0">AI Chat</h3>
+                <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                  {availableChatSessions.length > 0 && (
+                    <Select
+                      key={`chat-select-${availableChatSessions.length}-${availableChatSessions.map(s => s.id).join('-')}`}
+                      value={currentChatSessionId || 'new'}
+                      onValueChange={(value) => {
+                        if (value === 'new') {
+                          setCurrentChatSessionId(null);
+                          setChatMessages([]);
+                          if (fileId) {
+                            localStorage.removeItem(`chatMessages_${fileId}`);
+                          }
+                        } else {
+                          loadChatFromSupabase(value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-[200px] text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
+                        <SelectValue placeholder="Select chat">
+                          {currentChatSessionId 
+                            ? formatChatDate(availableChatSessions.find(s => s.id === currentChatSessionId)?.created_at || '')
+                            : 'New Chat'}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent 
+                        className="z-[200]"
+                        position="popper"
+                      >
+                        <SelectItem value="new">New Chat</SelectItem>
+                        {availableChatSessions.map((session) => (
+                          <SelectItem key={session.id} value={session.id}>
+                            {formatChatDate(session.created_at)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {availableChatSessions.length === 0 && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">No saved chats</span>
+                  )}
+                </div>
               </div>
               <Button 
                 variant="ghost" 
@@ -2047,7 +2278,7 @@ const DocumentEditor: React.FC = () => {
                 onClick={() => {
                   setShowChatSidebar(false);
                 }}
-                className="h-8 w-8 p-0"
+                className="h-8 w-8 p-0 flex-shrink-0"
               >
                 <X className="w-4 h-4" />
               </Button>
@@ -2058,7 +2289,7 @@ const DocumentEditor: React.FC = () => {
           <div className="flex-1 p-4 overflow-y-auto space-y-3 min-h-0">
             {chatMessages.length === 0 ? (
               <div className="text-center py-8">
-                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-500 opacity-50" />
+                <BotMessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-500 opacity-50" />
                 <p className="text-sm text-gray-500 dark:text-gray-400">Start a conversation</p>
               </div>
             ) : (
@@ -2151,21 +2382,33 @@ const DocumentEditor: React.FC = () => {
               </Button>
             </form>
             {chatMessages.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (window.confirm('Clear all chat messages?')) {
-                    setChatMessages([]);
-                    if (fileId) {
-                      localStorage.removeItem(`chatMessages_${fileId}`);
+              <div className="mt-2 flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={saveChatToSupabase}
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  <Save className="w-3 h-3 mr-1.5" />
+                  Save chat
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (window.confirm('Clear all chat messages?')) {
+                      setChatMessages([]);
+                      setCurrentChatSessionId(null);
+                      if (fileId) {
+                        localStorage.removeItem(`chatMessages_${fileId}`);
+                      }
                     }
-                  }
-                }}
-                className="mt-2 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-              >
-                Clear chat history
-              </Button>
+                  }}
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  Clear chat history
+                </Button>
+              </div>
             )}
           </div>
         </div>

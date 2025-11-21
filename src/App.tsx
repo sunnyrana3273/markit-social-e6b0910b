@@ -16,7 +16,6 @@ import Features from "./pages/Features";
 import Pricing from "./pages/Pricing";
 import Upload from "./pages/Upload";
 import DocumentEditor from "./pages/DocumentEditor";
-import TestZone from "./pages/TestZone";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,7 +40,6 @@ const App = () => (
           <Route path="/friends" element={<Friends />} />
           <Route path="/session/:sessionId" element={<StudySession />} />
           <Route path="/session/new" element={<StudySession />} />
-          <Route path="/test-zone" element={<TestZone />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

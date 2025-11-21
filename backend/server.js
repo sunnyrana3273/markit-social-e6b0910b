@@ -6,6 +6,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import twilio from 'twilio';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,7 +19,7 @@ const OPENAI_API_KEY = 'sk-proj-BE4szjNh0j-FsYHCOBbjj2lBrs6datW9dhFH6aOW2qhVc2No
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '25mb', extended: true }));
+app.use(express.urlencoded({ limit: '25mb', extended: true })); // This handles Twilio's form-encoded POST requests
 
 // Initialize OpenAI with hardcoded key
 const openai = new OpenAI({
@@ -26,6 +27,18 @@ const openai = new OpenAI({
 });
 
 console.log('✅ OpenAI API key loaded successfully');
+
+// Initialize Twilio
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_API_KEY = process.env.TWILIO_API_KEY;
+const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET;
+const TWILIO_APP_SID = process.env.TWILIO_APP_SID;
+
+if (TWILIO_ACCOUNT_SID && TWILIO_API_KEY && TWILIO_API_SECRET) {
+  console.log('✅ Twilio credentials loaded successfully');
+} else {
+  console.warn('⚠️ Twilio credentials not configured. Voice calling will not work.');
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -473,6 +486,134 @@ app.post('/api/rewrite-steps', async (req, res) => {
   } catch (error) {
     console.error('Error rewriting steps:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to rewrite steps' });
+  }
+});
+
+/**
+ * TwiML endpoint for handling voice calls
+ * POST /api/twilio/voice
+ * This endpoint is called by Twilio when routing calls
+ */
+app.post('/api/twilio/voice', (req, res) => {
+  try {
+    // Twilio sends form-encoded data, so we need to parse it from req.body
+    const To = req.body.To || req.body.to;
+    const From = req.body.From || req.body.from;
+    const CallSid = req.body.CallSid || req.body.CallSid;
+    
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('[Twilio Voice] 📞📞📞 RECEIVED TWiML REQUEST 📞📞📞');
+    console.log('[Twilio Voice] Request details:', { 
+      To, 
+      From, 
+      CallSid,
+      body: req.body,
+      headers: req.headers['content-type'],
+      method: req.method,
+      url: req.url,
+      ip: req.ip
+    });
+    console.log('[Twilio Voice] Full request body:', JSON.stringify(req.body, null, 2));
+    console.log('═══════════════════════════════════════════════════════');
+    
+    // Get the TwiML response object
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const response = new VoiceResponse();
+    
+    // For browser-to-browser calls, we use <Dial> with <Client>
+    // The "To" parameter contains the user ID (identity) we want to call
+    if (To) {
+      // Dial the client using their identity (user ID)
+      const dial = response.dial({
+        callerId: From, // The caller's identity
+      });
+      dial.client(To); // The recipient's identity (user ID)
+      console.log('[Twilio Voice] Dialing client:', To, 'from:', From);
+    } else {
+      // Fallback if no "To" parameter
+      console.warn('[Twilio Voice] No "To" parameter provided. Request body:', req.body);
+      response.say('No recipient specified');
+    }
+    
+    const twimlResponse = response.toString();
+    console.log('[Twilio Voice] ✅ Sending TwiML response:');
+    console.log('[Twilio Voice] TwiML:', twimlResponse);
+    console.log('[Twilio Voice] Response will dial client:', To);
+    console.log('═══════════════════════════════════════════════════════');
+    
+    // Set content type and send TwiML response
+    res.type('text/xml');
+    res.send(twimlResponse);
+  } catch (error) {
+    console.error('[Twilio Voice] Error generating TwiML:', error);
+    console.error('[Twilio Voice] Error stack:', error.stack);
+    const VoiceResponse = twilio.twiml.VoiceResponse;
+    const response = new VoiceResponse();
+    response.say('An error occurred while processing the call');
+    res.type('text/xml');
+    res.send(response.toString());
+  }
+});
+
+/**
+ * Route to generate Twilio access token for voice calls
+ * POST /api/twilio/token
+ * Body: { userId: string }
+ */
+app.post('/api/twilio/token', async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User ID is required' 
+      });
+    }
+
+    if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET || !TWILIO_APP_SID) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Twilio is not configured. Please set up Twilio credentials.' 
+      });
+    }
+
+    // Create access token
+    const AccessToken = twilio.jwt.AccessToken;
+    const VoiceGrant = AccessToken.VoiceGrant;
+
+    // Create a voice grant
+    const voiceGrant = new VoiceGrant({
+      outgoingApplicationSid: TWILIO_APP_SID,
+      incomingAllow: true, // Allow incoming calls
+    });
+
+    // Create an access token
+    const token = new AccessToken(
+      TWILIO_ACCOUNT_SID,
+      TWILIO_API_KEY,
+      TWILIO_API_SECRET,
+      { identity: userId, ttl: 3600 } // Token expires in 1 hour
+    );
+
+    token.addGrant(voiceGrant);
+
+    // Serialize the token to a JWT string
+    const jwt = token.toJwt();
+
+    res.json({
+      success: true,
+      token: jwt,
+      identity: userId,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error generating Twilio token:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to generate access token'
+    });
   }
 });
 

@@ -298,6 +298,9 @@ const Dashboard = () => {
               <Link to="/friends">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Friends</Button>
               </Link>
+              <Link to="/test-zone">
+                <Button variant="ghost" className="text-home-foreground hover:bg-home-surface bg-yellow-100 dark:bg-yellow-900/20">🧪 Test Zone</Button>
+              </Link>
             </nav>
           </div>
           

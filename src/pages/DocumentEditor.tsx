@@ -7,9 +7,11 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus, Phone, BotMessageSquare, Save } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { FriendChat } from '@/components/FriendChat';
+import { CallInterface } from '@/components/CallInterface';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
+import { useTwilioCall } from '@/hooks/useTwilioCall';
 import * as pdfjsLib from 'pdfjs-dist';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
@@ -369,6 +371,22 @@ const DocumentEditor: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [chatPosition, setChatPosition] = useState({ x: 50, y: window.innerHeight - 120 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [activeCallFriend, setActiveCallFriend] = useState<Friend | null>(null);
+  
+  // Initialize Twilio call hook
+  const {
+    callState,
+    initiateCall,
+    answerCall,
+    rejectCall,
+    endCall,
+    muteCall,
+    unmuteCall,
+    isMuted,
+    isDeviceReady,
+    error: callError,
+    incomingCallFrom,
+  } = useTwilioCall();
 
   useEffect(() => {
     document.title = "MarkIt | Document Editor";
@@ -1973,11 +1991,35 @@ const DocumentEditor: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-4">
                         <Phone 
-                          className="w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110"
-                          onClick={() => {
-                            // TODO: Implement call functionality
-                            console.log('Call friend:', friend.id);
+                          className={`w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110 ${
+                            !isDeviceReady ? 'opacity-50 cursor-not-allowed' : ''
+                          }`}
+                          onClick={async () => {
+                            if (!isDeviceReady) {
+                              alert('Call service is initializing. Please wait a moment...');
+                              return;
+                            }
+                            
+                            if (callState !== 'idle' && callState !== 'disconnected') {
+                              alert('A call is already in progress');
+                              return;
+                            }
+                            
+                            if (callError) {
+                              alert(`Call error: ${callError}. Please try again.`);
+                              return;
+                            }
+                            
+                            try {
+                              setActiveCallFriend(friend);
+                              await initiateCall(friend.id, getDisplayName(friend));
+                            } catch (error: any) {
+                              console.error('Failed to initiate call:', error);
+                              alert(`Failed to start call: ${error.message || 'Unknown error'}`);
+                              setActiveCallFriend(null);
+                            }
                           }}
+                          title={isDeviceReady ? 'Call friend' : 'Initializing call service...'}
                         />
                         <MessageSquare 
                           className="w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110"
@@ -2439,6 +2481,27 @@ const DocumentEditor: React.FC = () => {
             setShowFriendChat(false);
             setPendingFriendAttachment(null);
             setFriendMessages([]);
+          }}
+        />
+      )}
+
+      {/* Call Interface */}
+      {(callState !== 'idle' || activeCallFriend || incomingCallFrom) && (
+        <CallInterface
+          friendId={activeCallFriend?.id}
+          friendName={activeCallFriend ? getDisplayName(activeCallFriend) : undefined}
+          friendAvatar={activeCallFriend?.image_url}
+          callState={callState}
+          incomingCallFrom={incomingCallFrom}
+          onAnswer={answerCall}
+          onReject={rejectCall}
+          onEnd={endCall}
+          onMute={muteCall}
+          onUnmute={unmuteCall}
+          isMuted={isMuted}
+          error={callError}
+          onCallEnd={() => {
+            setActiveCallFriend(null);
           }}
         />
       )}

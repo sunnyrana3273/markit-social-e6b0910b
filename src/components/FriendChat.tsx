@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Send, X, ArrowDown, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -52,6 +53,7 @@ export function FriendChat({
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const loadOlderTimeoutRef = useRef<number | null>(null);
   const hasDoneInitialScrollRef = useRef(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -507,7 +509,12 @@ export function FriendChat({
                 >
                   <div className={bubbleClasses}>
                     {isImageMessage ? (
-                      <img src={msg.message} alt="attachment" className="rounded-md w-44 h-auto block" />
+                      <img 
+                        src={msg.message} 
+                        alt="attachment" 
+                        className="rounded-md w-44 h-auto block cursor-pointer hover:opacity-90 transition-opacity" 
+                        onClick={() => setExpandedImage(msg.message)}
+                      />
                     ) : (
                       <p className="text-sm">{msg.message}</p>
                     )}
@@ -564,7 +571,8 @@ export function FriendChat({
                 <img
                   src={pendingAttachment}
                   alt="Attached whiteboard"
-                  className="w-44 h-auto block"
+                  className="w-44 h-auto block cursor-pointer hover:opacity-90 transition-opacity"
+                  onClick={() => setExpandedImage(pendingAttachment)}
                 />
               </div>
             </div>
@@ -610,6 +618,30 @@ export function FriendChat({
           </Button>
         </form>
       </div>
+
+      {/* Expanded Image Dialog */}
+      <Dialog open={!!expandedImage} onOpenChange={(open) => !open && setExpandedImage(null)}>
+        <DialogContent className="max-w-6xl max-h-[95vh] p-0 bg-transparent border-none shadow-none">
+          {expandedImage && (
+            <div className="relative w-full h-full flex items-center justify-center p-4">
+              <img
+                src={expandedImage}
+                alt="Expanded view"
+                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-6 right-6 bg-background/90 hover:bg-background text-foreground rounded-full shadow-lg"
+                onClick={() => setExpandedImage(null)}
+                aria-label="Close expanded view"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

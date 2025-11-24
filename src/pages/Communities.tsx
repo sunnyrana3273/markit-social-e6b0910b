@@ -47,6 +47,7 @@ const Communities = () => {
   const [joinedCommunities, setJoinedCommunities] = useState<JoinedCommunity[]>([]);
   const [isCommunitiesMinimized, setIsCommunitiesMinimized] = useState(false);
   const [isMyCommunitiesMinimized, setIsMyCommunitiesMinimized] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "MarkIt | Communities";
@@ -109,7 +110,27 @@ const Communities = () => {
           .order('joined_at', { ascending: false });
 
         if (joinedData) {
-          setJoinedCommunities(joinedData as JoinedCommunity[]);
+          // Get visit history from localStorage
+          const visitKey = `community_visits_${session.user.id}`;
+          const visits = JSON.parse(localStorage.getItem(visitKey) || '{}');
+          
+          // Sort by last visited time (most recent first)
+          const sortedData = [...joinedData].sort((a, b) => {
+            const aVisitTime = visits[a.course_communities.id];
+            const bVisitTime = visits[b.course_communities.id];
+            
+            // If both have visit times, sort by most recent
+            if (aVisitTime && bVisitTime) {
+              return new Date(bVisitTime).getTime() - new Date(aVisitTime).getTime();
+            }
+            // If only one has visit time, prioritize it
+            if (aVisitTime && !bVisitTime) return -1;
+            if (!aVisitTime && bVisitTime) return 1;
+            // If neither has visit time, keep original order
+            return 0;
+          });
+          
+          setJoinedCommunities(sortedData as JoinedCommunity[]);
         }
       }
     };
@@ -174,13 +195,40 @@ const Communities = () => {
     return acc;
   }, [] as Array<{category: string, courses: Array<{id: string, name: string}>}>);
 
-  // Filter courses based on search query
-  const filteredCategories = courseCategories.map(category => ({
-    ...category,
-    courses: category.courses.filter(course =>
-      course.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  })).filter(category => category.courses.length > 0);
+  // Filter courses based on search query and selected filter
+  const filteredCategories = courseCategories
+    .filter(category => {
+      // If a filter is selected, only show matching categories
+      if (selectedFilter === 'AP Courses') {
+        // Show categories that contain AP courses
+        // Check if any course in the category starts with "AP "
+        return category.courses.some(course => 
+          course.name.toLowerCase().startsWith('ap ')
+        );
+      }
+      if (selectedFilter === 'SAT Prep') {
+        // Show only SAT Prep category
+        return category.category === 'SAT Prep';
+      }
+      // If "All Subjects" or no filter, show all
+      return true;
+    })
+    .map(category => ({
+      ...category,
+      courses: category.courses.filter(course => {
+        // Apply search query filter
+        const matchesSearch = course.name.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        // If AP Courses filter is active, also filter individual courses
+        if (selectedFilter === 'AP Courses') {
+          return matchesSearch && course.name.toLowerCase().startsWith('ap ');
+        }
+        
+        // If SAT Prep filter is active, courses are already filtered by category
+        return matchesSearch;
+      })
+    }))
+    .filter(category => category.courses.length > 0);
 
   
 
@@ -259,13 +307,37 @@ const Communities = () => {
                   />
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedFilter(null)}
+                    className={
+                      selectedFilter === null
+                        ? "border-home-primary text-home-primary bg-home-primary/10 hover:bg-home-primary hover:text-white"
+                        : "border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent"
+                    }
+                  >
                     All Subjects
                   </Button>
-                  <Button variant="outline" className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedFilter('AP Courses')}
+                    className={
+                      selectedFilter === 'AP Courses'
+                        ? "border-home-primary text-home-primary bg-home-primary/10 hover:bg-home-primary hover:text-white"
+                        : "border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent"
+                    }
+                  >
                     AP Courses
                   </Button>
-                  <Button variant="outline" className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setSelectedFilter('SAT Prep')}
+                    className={
+                      selectedFilter === 'SAT Prep'
+                        ? "border-home-primary text-home-primary bg-home-primary/10 hover:bg-home-primary hover:text-white"
+                        : "border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent"
+                    }
+                  >
                     SAT Prep
                   </Button>
                 </div>
@@ -302,27 +374,41 @@ const Communities = () => {
                 
                 {!isMyCommunitiesMinimized && (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {joinedCommunities.map((membership) => (
-                    <Link 
-                      key={membership.id}
-                      to={`/community/${membership.course_communities.id}`}
-                    >
-                      <Card className="p-4 hover:bg-accent transition-colors cursor-pointer border border-border">
-                        <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 bg-home-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <BookOpen className="w-5 h-5 text-home-primary" />
+                  {joinedCommunities.map((membership, index) => {
+                    // Check if this is the most recently visited community
+                    const visitKey = `community_visits_${user?.id}`;
+                    const visits = user ? JSON.parse(localStorage.getItem(visitKey) || '{}') : {};
+                    const hasVisitTime = visits[membership.course_communities.id];
+                    const isMostRecent = index === 0 && hasVisitTime;
+                    
+                    return (
+                      <Link 
+                        key={membership.id}
+                        to={`/community/${membership.course_communities.id}`}
+                      >
+                        <Card className="p-4 hover:bg-accent transition-colors cursor-pointer border border-border">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 bg-home-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <BookOpen className="w-5 h-5 text-home-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-home-foreground truncate">{membership.course_communities.course_name}</h3>
+                              <Badge variant="secondary" className="mt-1 text-xs">{membership.course_communities.course_category}</Badge>
+                              {isMostRecent ? (
+                                <p className="text-xs text-home-primary font-medium mt-2">
+                                  Recently visited
+                                </p>
+                              ) : (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                  Joined {formatRelativeTime(membership.joined_at)}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-home-foreground truncate">{membership.course_communities.course_name}</h3>
-                            <Badge variant="secondary" className="mt-1 text-xs">{membership.course_communities.course_category}</Badge>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                              Joined {formatRelativeTime(membership.joined_at)}
-                            </p>
-                          </div>
-                        </div>
-                      </Card>
-                    </Link>
-                  ))}
+                        </Card>
+                      </Link>
+                    );
+                  })}
                   </div>
                 )}
               </Card>

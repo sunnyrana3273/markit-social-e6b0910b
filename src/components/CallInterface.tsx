@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Phone, PhoneOff, Mic, MicOff, X } from 'lucide-react';
-import { CallState } from '@/hooks/useTwilioCall';
+import { CallState, useTwilioCall } from '@/hooks/useTwilioCall';
 
 interface CallInterfaceProps {
   friendId?: string;
@@ -76,7 +76,7 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
   if (callState === 'ringing') {
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-white dark:bg-card rounded-lg shadow-2xl p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-border">
+        <div className="bg-white dark:bg-card rounded-lg shadow-md p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-border">
           <div className="flex flex-col items-center space-y-4">
             <Avatar className="w-20 h-20">
               <AvatarImage src={displayFriendAvatar || undefined} alt={displayFriendName} />
@@ -131,7 +131,7 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
   // Active call interface
   if (callState === 'connecting' || callState === 'connected') {
     return (
-      <div className="fixed bottom-6 right-6 z-[200] bg-white dark:bg-card rounded-lg shadow-2xl p-4 border border-gray-200 dark:border-border min-w-[280px]">
+      <div className="fixed bottom-6 right-6 z-[200] bg-white dark:bg-card rounded-lg shadow-md p-4 border border-gray-200 dark:border-border min-w-[280px]">
         <div className="flex flex-col items-center space-y-3">
           <Avatar className="w-16 h-16">
             <AvatarImage src={displayFriendAvatar || undefined} alt={displayFriendName} />

@@ -4,6 +4,11 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { 
   BookOpen, 
   Plus, 
@@ -18,7 +23,9 @@ import {
   Image as ImageIcon,
   Book,
   Moon,
-  Sun
+  Sun,
+  Palette,
+  RotateCcw
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,7 +57,8 @@ interface ProblemSet {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme, themeColor, setThemeColor, resetThemeColor } = useTheme();
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
@@ -302,6 +310,58 @@ const Dashboard = () => {
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Theme Color Picker */}
+            <Popover open={showColorPicker} onOpenChange={setShowColorPicker}>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-home-foreground hover:bg-home-surface"
+                  aria-label="Theme color picker"
+                >
+                  <div 
+                    className="w-5 h-5 rounded-full border-2 border-current"
+                    style={{ backgroundColor: themeColor }}
+                  />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-4" align="end">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Theme Color</label>
+                    <div className="flex items-center gap-3">
+                      <label className="relative cursor-pointer">
+                        <input
+                          type="color"
+                          value={themeColor}
+                          onChange={(e) => setThemeColor(e.target.value)}
+                          className="h-10 w-20 rounded border border-border cursor-pointer appearance-none"
+                          style={{ 
+                            WebkitAppearance: 'none',
+                            MozAppearance: 'none',
+                            appearance: 'none',
+                            backgroundColor: themeColor
+                          }}
+                        />
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetThemeColor}
+                        className="flex-1"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reset
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Changes icon and button accent colors
+                    </p>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            
             {/* Dark Mode Toggle */}
             <div className="flex items-center gap-2 px-2">
               <Sun className={`w-4 h-4 transition-opacity ${theme === 'light' ? 'opacity-100' : 'opacity-40'}`} />

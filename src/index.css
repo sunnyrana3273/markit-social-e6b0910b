@@ -68,9 +68,9 @@ All colors MUST be HSL for proper theming.
     --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 94%));
     --gradient-glass: linear-gradient(135deg, rgba(255,255,255,0.7), rgba(255,255,255,0.3));
     
-    --glow-primary: 0 0 20px hsl(var(--primary) / 0.3);
-    --glow-secondary: 0 0 20px hsl(var(--secondary) / 0.3);
-    --glow-success: 0 0 15px hsl(var(--success) / 0.4);
+    --glow-primary: 0 0 8px hsl(var(--primary) / 0.15);
+    --glow-secondary: 0 0 8px hsl(var(--secondary) / 0.15);
+    --glow-success: 0 0 6px hsl(var(--success) / 0.2);
     
     --shadow-card: 0 4px 20px hsl(220 14% 2% / 0.8);
     --shadow-hover: 0 8px 30px hsl(220 14% 2% / 0.9);
@@ -157,9 +157,9 @@ All colors MUST be HSL for proper theming.
     --gradient-surface: linear-gradient(180deg, hsl(var(--home-surface)), hsl(0 0% 10%));
     --gradient-glass: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(0,0,0,0.3));
     
-    --glow-primary: 0 0 20px hsl(var(--primary) / 0.4);
-    --glow-secondary: 0 0 20px hsl(var(--secondary) / 0.4);
-    --glow-success: 0 0 15px hsl(var(--success) / 0.5);
+    --glow-primary: 0 0 8px hsl(var(--primary) / 0.2);
+    --glow-secondary: 0 0 8px hsl(var(--secondary) / 0.2);
+    --glow-success: 0 0 6px hsl(var(--success) / 0.25);
     
     --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.9);
     --shadow-hover: 0 8px 30px hsl(0 0% 0% / 0.95);
@@ -237,7 +237,7 @@ All colors MUST be HSL for proper theming.
     animation: slide-up 0.5s ease-out;
   }
 
-  /* Shine effect for special buttons */
+  /* Shine effect for special buttons - reduced intensity */
   .shine-button {
     position: relative;
     overflow: hidden;
@@ -253,26 +253,57 @@ All colors MUST be HSL for proper theming.
     background-image: linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.25),
+      rgba(255, 255, 255, 0.3),
       transparent
     );
     transform: skew(-15deg);
     z-index: 1;
     pointer-events: none;
+    animation: shine 3s ease-in-out infinite;
   }
 
-  /* Looping shine while hovered */
   .shine-button:hover::after {
-    animation: shine 1.2s ease-in-out infinite;
+    animation: shine 1.5s ease-in-out infinite;
+  }
+
+  .shine-button:disabled::after {
+    animation: none;
+    opacity: 0.5;
   }
 
   @keyframes shine {
     0% {
       left: -100%;
     }
+    50% {
+      left: 100%;
+    }
     100% {
       left: 100%;
     }
+  }
+
+  /* Hide RGB/hex values from color input */
+  input[type="color"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 0.375rem;
+  }
+
+  input[type="color"]::-moz-color-swatch {
+    border: none;
+    border-radius: 0.375rem;
   }
 }
 

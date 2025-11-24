@@ -98,6 +98,15 @@ const Friends = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [friendsWithMetrics, setFriendsWithMetrics] = useState<FriendWithMetrics[]>([]);
+  const [userMetrics, setUserMetrics] = useState<{
+    daily_metrics?: Array<{ date?: string | null; problems_completed: number; minutes_studied: number }>;
+    user_stats?: {
+      lifetime_minutes_studied: number;
+      lifetime_questions_answered: number;
+      longest_streak: number;
+      current_streak: number;
+    };
+  }>({});
   const [presenceState, setPresenceState] = useState<Record<string, { status: string; updatedAt?: string }>>({});
   const [searchUsername, setSearchUsername] = useState("");
   const [searchedUser, setSearchedUser] = useState<SearchedUser | null>(null);
@@ -270,6 +279,38 @@ const Friends = () => {
         setProfile(profileData);
       }
 
+      // Fetch current user's metrics and stats
+      const { data: userMetricsData, error: userMetricsError } = await supabase
+        .from('daily_metrics')
+        .select('date, problems_completed, minutes_studied')
+        .eq('user_id', session.user.id)
+        .order('date', { ascending: false })
+        .limit(7);
+
+      if (userMetricsError) {
+        console.warn('[Friends] Error fetching user metrics:', userMetricsError);
+      }
+
+      const { data: userStatsData, error: userStatsError } = await supabase
+        .from('user_stats')
+        .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (userStatsError) {
+        console.warn('[Friends] Error fetching user stats:', userStatsError);
+      }
+
+      setUserMetrics({
+        daily_metrics: userMetricsData || [],
+        user_stats: userStatsData ? {
+          lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+          lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+          longest_streak: userStatsData.longest_streak ?? 0,
+          current_streak: userStatsData.current_streak ?? 0,
+        } : undefined,
+      });
+
       await fetchFriendsData(session.user.id);
 
       // Fetch incoming friend requests (where current user is the friend_id)
@@ -320,8 +361,29 @@ const Friends = () => {
         }
       }
 
-      friendsInterval = window.setInterval(() => {
-        void fetchFriendsData(session.user.id);
+      friendsInterval = window.setInterval(async () => {
+        await fetchFriendsData(session.user.id);
+        // Refresh user metrics too
+        const { data: userMetricsData } = await supabase
+          .from('daily_metrics')
+          .select('date, problems_completed, minutes_studied')
+          .eq('user_id', session.user.id)
+          .order('date', { ascending: false })
+          .limit(7);
+        const { data: userStatsData } = await supabase
+          .from('user_stats')
+          .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        setUserMetrics({
+          daily_metrics: userMetricsData || [],
+          user_stats: userStatsData ? {
+            lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+            lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+            longest_streak: userStatsData.longest_streak ?? 0,
+            current_streak: userStatsData.current_streak ?? 0,
+          } : undefined,
+        });
       }, 60000);
     };
 
@@ -492,9 +554,9 @@ const Friends = () => {
 
   const totalFriends = friendsWithMetrics.length;
 
-  // Calculate leaderboard with scores
-  const leaderboard = friendsWithMetrics
-    .map(friend => {
+  // Calculate leaderboard with scores including current user
+  const leaderboard = useMemo(() => {
+    const friendsList = friendsWithMetrics.map(friend => {
       const totalProblemsLast7 = friend.daily_metrics?.reduce((sum, day) => sum + (day.problems_completed || 0), 0) || 0;
       const totalMinutesLast7 = friend.daily_metrics?.reduce((sum, day) => sum + (day.minutes_studied || 0), 0) || 0;
       const lifetimeMinutes = friend.user_stats?.lifetime_minutes_studied ?? totalMinutesLast7;
@@ -514,11 +576,41 @@ const Friends = () => {
         lifetimeProblems,
         longestStreak,
         currentStreak,
-        score
+        score,
+        isCurrentUser: false
       };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10); // Top 10
+    });
+
+    // Add current user to leaderboard
+    if (user && profile && userMetrics) {
+      const totalProblemsLast7 = userMetrics.daily_metrics?.reduce((sum, day) => sum + (day.problems_completed || 0), 0) || 0;
+      const totalMinutesLast7 = userMetrics.daily_metrics?.reduce((sum, day) => sum + (day.minutes_studied || 0), 0) || 0;
+      const lifetimeMinutes = userMetrics.user_stats?.lifetime_minutes_studied ?? totalMinutesLast7;
+      const lifetimeProblems = userMetrics.user_stats?.lifetime_questions_answered ?? totalProblemsLast7;
+      const longestStreak = userMetrics.user_stats?.longest_streak ?? 0;
+      const currentStreak = userMetrics.user_stats?.current_streak ?? 0;
+      const score = (lifetimeProblems + lifetimeMinutes) / 2;
+
+      friendsList.push({
+        id: user.id,
+        name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email,
+        image_url: profile.image_url,
+        initials: getInitials(profile.first_name, profile.last_name, profile.email),
+        totalProblemsLast7,
+        totalMinutesLast7,
+        lifetimeMinutes,
+        lifetimeProblems,
+        longestStreak,
+        currentStreak,
+        score,
+        isCurrentUser: true
+      });
+    }
+
+    return friendsList
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10); // Top 10
+  }, [friendsWithMetrics, user, profile, userMetrics]);
 
   const getRankClass = (index: number) => {
     if (index === 0) return "rank-1"; // Gold
@@ -1019,10 +1111,10 @@ const Friends = () => {
                       transform: rotate(360deg) scale(1.2);
                     }
                     .rank-2:hover .rank-badge {
-                      transform: rotate(180deg) scale(1.15);
+                      transform: scale(1.15);
                     }
                     .rank-3:hover .rank-badge {
-                      transform: rotate(90deg) scale(1.1);
+                      transform: scale(1.1);
                     }
                   `}</style>
                   <div className="space-y-3">
@@ -1052,7 +1144,12 @@ const Friends = () => {
                           
                           {/* Friend Info */}
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-home-foreground text-lg truncate">{friend.name}</h3>
+                            <h3 className="font-bold text-home-foreground text-lg truncate">
+                              {friend.name}
+                              {friend.isCurrentUser && (
+                                <span className="italic text-gray-500 dark:text-gray-400 font-normal"> (you)</span>
+                              )}
+                            </h3>
                             <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Brain className="w-3 h-3 text-purple-500" />
@@ -1159,7 +1256,7 @@ const Friends = () => {
                               <h3 className="font-medium text-home-foreground truncate">
                                 {`${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email}
                               </h3>
-                              <Badge className={`flex items-center gap-2 ${statusConfig.badge}`}>
+                              <Badge className={`flex items-center gap-2 ${statusConfig.badge} pointer-events-none`}>
                                 <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`}></span>
                                 {statusConfig.label}
                               </Badge>

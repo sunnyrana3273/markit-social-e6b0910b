@@ -52,7 +52,7 @@ import {
   Download
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { useToast } from "@/components/ui/use-toast";
@@ -149,6 +149,7 @@ const CourseCommunity = () => {
   const [newResourceDesc, setNewResourceDesc] = useState("");
   const [showNewResource, setShowNewResource] = useState(false);
   const [expandedDiscussions, setExpandedDiscussions] = useState<Set<string>>(new Set());
+  const expandedDiscussionsRef = useRef<Set<string>>(new Set());
   const [replies, setReplies] = useState<Record<string, Reply[]>>({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
   const [replyContents, setReplyContents] = useState<Record<string, string>>({});
@@ -157,6 +158,7 @@ const CourseCommunity = () => {
   const [replyFiles, setReplyFiles] = useState<Record<string, File | null>>({});
   const [isUploadingReplyFile, setIsUploadingReplyFile] = useState<Record<string, boolean>>({});
   const [expandedDiscussionId, setExpandedDiscussionId] = useState<string | null>(null);
+  const expandedDiscussionIdRef = useRef<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<{ 
     type: 'discussion' | 'reply' | null; 
     id: string | null;
@@ -165,6 +167,15 @@ const CourseCommunity = () => {
   const [discussionVotes, setDiscussionVotes] = useState<Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }>>({});
   const [replyVotes, setReplyVotes] = useState<Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }>>({});
   const [interactionCounts, setInteractionCounts] = useState<Record<string, number>>({});
+
+  // Keep refs in sync with state for use in realtime callbacks
+  useEffect(() => {
+    expandedDiscussionsRef.current = expandedDiscussions;
+  }, [expandedDiscussions]);
+
+  useEffect(() => {
+    expandedDiscussionIdRef.current = expandedDiscussionId;
+  }, [expandedDiscussionId]);
 
   useEffect(() => {
     document.title = "MarkIt | Community";
@@ -213,6 +224,133 @@ const CourseCommunity = () => {
     initializeUser();
   }, [navigate]);
 
+  // Refactored function to fetch discussions and related data
+  const fetchDiscussionsData = useCallback(async () => {
+    if (!communityId || !user || !isMember) return;
+
+    // Fetch discussions first - show these immediately
+    // Limit to 50 for faster initial load
+    const { data: discussionsData } = await supabase
+      .from('community_discussions')
+      .select(`
+        *,
+        profiles:user_id (first_name, last_name, image_url, email)
+      `)
+      .eq('community_id', communityId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (discussionsData) {
+      // Set discussions immediately so UI can render
+      setDiscussions(discussionsData as any);
+      
+      // Fetch all related data in parallel for better performance
+      if (discussionsData.length > 0) {
+        const discussionIds = discussionsData.map(d => d.id);
+        
+        // Fetch all counts/votes/interactions in parallel
+        // Don't initialize to 0 - only set when we have actual data
+        const [repliesResult, votesResult, interactionsResult] = await Promise.all([
+          // Reply counts
+          supabase
+            .from('community_discussion_replies')
+            .select('discussion_id')
+            .in('discussion_id', discussionIds),
+          // Discussion votes
+          user ? supabase
+            .from('community_discussion_votes')
+            .select('discussion_id, vote_type, user_id')
+            .in('discussion_id', discussionIds) : Promise.resolve({ data: null, error: null }),
+          // Interaction counts
+          supabase
+            .from('community_discussion_interactions')
+            .select('discussion_id')
+            .in('discussion_id', discussionIds)
+        ]);
+
+        // Process reply counts - only update if we have data, preserve existing values
+        if (repliesResult.data) {
+          setReplyCounts((prev) => {
+            const counts = { ...prev };
+            // Count replies per discussion
+            const replyCountsByDiscussion: Record<string, number> = {};
+            repliesResult.data.forEach((reply) => {
+              replyCountsByDiscussion[reply.discussion_id] = (replyCountsByDiscussion[reply.discussion_id] || 0) + 1;
+            });
+            // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
+            discussionIds.forEach(id => {
+              const newCount = replyCountsByDiscussion[id] || 0;
+              const current = prev[id];
+              if (current === undefined || newCount >= current) {
+                counts[id] = newCount;
+              }
+              // If current is higher, keep it (don't flash down)
+            });
+            return counts;
+          });
+        }
+
+              // Process votes - only set when we have data
+              if (votesResult.data && user) {
+                setDiscussionVotes((prev) => {
+                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
+                  
+                  // Initialize all discussions first
+                  discussionIds.forEach(id => {
+                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
+                  });
+                  
+                  // Count votes from scratch (don't increment on existing values)
+                  votesResult.data.forEach((vote) => {
+                    if (!votes[vote.discussion_id]) {
+                      votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
+                    }
+                    if (vote.vote_type === 'upvote') {
+                      votes[vote.discussion_id].upvotes++;
+                    } else {
+                      votes[vote.discussion_id].downvotes++;
+                    }
+                    if (vote.user_id === user.id) {
+                      votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+                    }
+                  });
+                  
+                  // Preserve existing values for discussions not in this batch (if any)
+                  Object.keys(prev).forEach(id => {
+                    if (!discussionIds.includes(id)) {
+                      votes[id] = prev[id];
+                    }
+                  });
+                  
+                  return votes;
+                });
+              }
+
+        // Process interaction counts - only update if we have data
+        if (interactionsResult.data) {
+          setInteractionCounts((prev) => {
+            const interactionCountsMap = { ...prev };
+            // Count interactions per discussion
+            const interactionCountsByDiscussion: Record<string, number> = {};
+            interactionsResult.data.forEach((interaction) => {
+              interactionCountsByDiscussion[interaction.discussion_id] = (interactionCountsByDiscussion[interaction.discussion_id] || 0) + 1;
+            });
+            // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
+            discussionIds.forEach(id => {
+              const newCount = interactionCountsByDiscussion[id] || 0;
+              const current = prev[id];
+              if (current === undefined || newCount >= current) {
+                interactionCountsMap[id] = newCount;
+              }
+              // If current is higher, keep it (don't flash down)
+            });
+            return interactionCountsMap;
+          });
+        }
+      }
+    }
+  }, [communityId, user, isMember]);
+
   useEffect(() => {
     if (!communityId || !user) return;
 
@@ -231,30 +369,32 @@ const CourseCommunity = () => {
     trackVisit();
 
     const fetchCommunityData = async () => {
-      // Fetch community
-      const { data: communityData } = await supabase
-        .from('course_communities')
-        .select('*')
-        .eq('id', communityId)
-        .single();
+      // Fetch community and membership in parallel (they're independent)
+      const [communityResult, membershipResult] = await Promise.all([
+        supabase
+          .from('course_communities')
+          .select('*')
+          .eq('id', communityId)
+          .single(),
+        supabase
+          .from('community_memberships')
+          .select('*')
+          .eq('community_id', communityId)
+          .eq('user_id', user.id)
+          .maybeSingle()
+      ]);
 
-      if (communityData) {
-        setCommunity(communityData);
+      if (communityResult.data) {
+        setCommunity(communityResult.data);
       }
 
-      // Check membership
-      const { data: membershipData } = await supabase
-        .from('community_memberships')
-        .select('*')
-        .eq('community_id', communityId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      setIsMember(!!membershipData);
+      const membershipData = membershipResult.data;
+      const isMemberNow = !!membershipData;
+      setIsMember(isMemberNow);
 
       if (membershipData) {
-        // Update presence
-        await supabase
+        // Update presence (don't await - fire and forget for faster initial load)
+        supabase
           .from('community_presence')
           .upsert({
             community_id: communityId,
@@ -262,114 +402,156 @@ const CourseCommunity = () => {
             last_seen: new Date().toISOString()
           });
 
-        // Fetch discussions
-        const { data: discussionsData } = await supabase
+        // Fetch discussions immediately (don't wait for state update)
+        // Fetch discussions first - show these immediately
+        const discussionsResult = await supabase
           .from('community_discussions')
           .select(`
             *,
             profiles:user_id (first_name, last_name, image_url, email)
           `)
           .eq('community_id', communityId)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(50); // Limit initial load for faster response
 
-        if (discussionsData) {
-          setDiscussions(discussionsData as any);
+        if (discussionsResult.data) {
+          // Set discussions immediately so UI can render
+          setDiscussions(discussionsResult.data as any);
           
-          // Fetch reply counts for discussions (we'll fetch full replies when expanded)
-          if (discussionsData.length > 0) {
-            const discussionIds = discussionsData.map(d => d.id);
+          // Fetch all related data in parallel (non-blocking)
+          if (discussionsResult.data.length > 0) {
+            const discussionIds = discussionsResult.data.map(d => d.id);
             
-            // Fetch all replies and count them by discussion_id
-            const { data: repliesData } = await supabase
-              .from('community_discussion_replies')
-              .select('discussion_id')
-              .in('discussion_id', discussionIds);
-            
-            // Count replies per discussion
-            const counts: Record<string, number> = {};
-            discussionIds.forEach(id => {
-              counts[id] = 0;
-            });
-            repliesData?.forEach((reply) => {
-              counts[reply.discussion_id] = (counts[reply.discussion_id] || 0) + 1;
-            });
-            setReplyCounts(counts);
-
-            // Fetch discussion votes
-            if (user) {
-              const { data: votesData } = await supabase
+            // Fetch counts/votes/interactions in parallel (non-blocking)
+            // Don't initialize to 0 - only set when we have actual data
+            Promise.all([
+              supabase
+                .from('community_discussion_replies')
+                .select('discussion_id')
+                .in('discussion_id', discussionIds),
+              user ? supabase
                 .from('community_discussion_votes')
                 .select('discussion_id, vote_type, user_id')
-                .in('discussion_id', discussionIds);
+                .in('discussion_id', discussionIds) : Promise.resolve({ data: null, error: null }),
+              supabase
+                .from('community_discussion_interactions')
+                .select('discussion_id')
+                .in('discussion_id', discussionIds)
+            ]).then(([repliesResult, votesResult, interactionsResult]) => {
+              // Process reply counts - only update if we have data, preserve existing values
+              if (repliesResult.data) {
+                setReplyCounts((prev) => {
+                  const counts = { ...prev };
+                  // Count replies per discussion
+                  const replyCountsByDiscussion: Record<string, number> = {};
+                  repliesResult.data.forEach((reply) => {
+                    replyCountsByDiscussion[reply.discussion_id] = (replyCountsByDiscussion[reply.discussion_id] || 0) + 1;
+                  });
+                  // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
+                  discussionIds.forEach(id => {
+                    const newCount = replyCountsByDiscussion[id] || 0;
+                    const current = prev[id];
+                    if (current === undefined || newCount >= current) {
+                      counts[id] = newCount;
+                    }
+                    // If current is higher, keep it (don't flash down)
+                  });
+                  return counts;
+                });
+              }
 
-              const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
-              discussionIds.forEach(id => {
-                votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
-              });
+              // Process votes - only set when we have data
+              if (votesResult.data && user) {
+                setDiscussionVotes((prev) => {
+                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
+                  
+                  // Initialize all discussions first
+                  discussionIds.forEach(id => {
+                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
+                  });
+                  
+                  // Count votes from scratch (don't increment on existing values)
+                  votesResult.data.forEach((vote) => {
+                    if (!votes[vote.discussion_id]) {
+                      votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
+                    }
+                    if (vote.vote_type === 'upvote') {
+                      votes[vote.discussion_id].upvotes++;
+                    } else {
+                      votes[vote.discussion_id].downvotes++;
+                    }
+                    if (vote.user_id === user.id) {
+                      votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+                    }
+                  });
+                  
+                  // Preserve existing values for discussions not in this batch (if any)
+                  Object.keys(prev).forEach(id => {
+                    if (!discussionIds.includes(id)) {
+                      votes[id] = prev[id];
+                    }
+                  });
+                  
+                  return votes;
+                });
+              }
 
-              votesData?.forEach((vote) => {
-                if (!votes[vote.discussion_id]) {
-                  votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
-                }
-                if (vote.vote_type === 'upvote') {
-                  votes[vote.discussion_id].upvotes++;
-                } else {
-                  votes[vote.discussion_id].downvotes++;
-                }
-                if (vote.user_id === user.id) {
-                  votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-                }
-              });
-              setDiscussionVotes(votes);
-            }
-
-            // Fetch interaction counts
-            const { data: interactionData } = await supabase
-              .from('community_discussion_interactions')
-              .select('discussion_id')
-              .in('discussion_id', discussionIds);
-
-            const interactionCountsMap: Record<string, number> = {};
-            discussionIds.forEach(id => {
-              interactionCountsMap[id] = 0;
+              // Process interaction counts - only update if we have data
+              if (interactionsResult.data) {
+                setInteractionCounts((prev) => {
+                  const interactionCountsMap = { ...prev };
+                  // Count interactions per discussion
+                  const interactionCountsByDiscussion: Record<string, number> = {};
+                  interactionsResult.data.forEach((interaction) => {
+                    interactionCountsByDiscussion[interaction.discussion_id] = (interactionCountsByDiscussion[interaction.discussion_id] || 0) + 1;
+                  });
+                  // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
+                  discussionIds.forEach(id => {
+                    const newCount = interactionCountsByDiscussion[id] || 0;
+                    const current = prev[id];
+                    if (current === undefined || newCount >= current) {
+                      interactionCountsMap[id] = newCount;
+                    }
+                    // If current is higher, keep it (don't flash down)
+                  });
+                  return interactionCountsMap;
+                });
+              }
+            }).catch(err => {
+              console.error('Error fetching discussion metadata:', err);
             });
-            interactionData?.forEach((interaction) => {
-              interactionCountsMap[interaction.discussion_id] = (interactionCountsMap[interaction.discussion_id] || 0) + 1;
-            });
-            setInteractionCounts(interactionCountsMap);
           }
         }
 
-        // Fetch resources
-        const { data: resourcesData } = await supabase
-          .from('community_resources')
-          .select(`
-            *,
-            profiles:user_id (first_name, last_name, image_url, email)
-          `)
-          .eq('community_id', communityId)
-          .order('created_at', { ascending: false });
-
-        if (resourcesData) {
-          setResources(resourcesData as any);
-        }
-
-        // Fetch active users (last 5 minutes)
+        // Fetch resources and active users in parallel (less critical, can load after)
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        const { data: activeUsersData } = await supabase
-          .from('community_presence')
-          .select(`
-            user_id,
-            last_seen,
-            profiles:user_id (first_name, last_name, image_url, email)
-          `)
-          .eq('community_id', communityId)
-          .gte('last_seen', fiveMinutesAgo)
-          .neq('user_id', user.id);
-
-        if (activeUsersData) {
-          setActiveUsers(activeUsersData as any);
-        }
+        Promise.all([
+          supabase
+            .from('community_resources')
+            .select(`
+              *,
+              profiles:user_id (first_name, last_name, image_url, email)
+            `)
+            .eq('community_id', communityId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('community_presence')
+            .select(`
+              user_id,
+              last_seen,
+              profiles:user_id (first_name, last_name, image_url, email)
+            `)
+            .eq('community_id', communityId)
+            .gte('last_seen', fiveMinutesAgo)
+            .neq('user_id', user.id)
+        ]).then(([resourcesResult, activeUsersResult]) => {
+          if (resourcesResult.data) {
+            setResources(resourcesResult.data as any);
+          }
+          if (activeUsersResult.data) {
+            setActiveUsers(activeUsersResult.data as any);
+          }
+        });
       }
     };
 
@@ -389,7 +571,296 @@ const CourseCommunity = () => {
     }, 60000); // Update every minute
 
     return () => clearInterval(presenceInterval);
-  }, [communityId, user, isMember]);
+  }, [communityId, user]);
+
+  // Realtime subscriptions and polling with visibility detection
+  useEffect(() => {
+    if (!communityId || !user || !isMember) return;
+
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollingInterval: NodeJS.Timeout | null = null;
+    let isTabVisible = !document.hidden;
+
+    // Handle visibility change
+    const handleVisibilityChange = () => {
+      isTabVisible = !document.hidden;
+      
+      // Clear existing interval
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+
+      // Set up new interval based on visibility
+      const interval = isTabVisible ? 4000 : 15000; // 4s active, 15s inactive
+      pollingInterval = setInterval(() => {
+        fetchDiscussionsData();
+      }, interval);
+    };
+
+    // Set up Realtime channel for discussions
+    channel = supabase
+      .channel(`community-discussions-${communityId}`, {
+        config: {
+          presence: { key: user.id },
+        },
+      })
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "community_discussions",
+          filter: `community_id=eq.${communityId}`,
+        },
+        async (payload) => {
+          // Fetch profile for the new discussion
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, image_url, email')
+            .eq('id', payload.new.user_id)
+            .single();
+
+          const newDiscussion = {
+            ...payload.new,
+            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
+          } as Discussion;
+
+          setDiscussions((prev) => {
+            // Check if discussion already exists (avoid duplicates)
+            if (prev.some(d => d.id === newDiscussion.id)) {
+              return prev;
+            }
+            return [newDiscussion, ...prev];
+          });
+
+          // Update reply count (initialize to 0)
+          setReplyCounts((prev) => ({
+            ...prev,
+            [newDiscussion.id]: 0
+          }));
+
+          // Initialize votes
+          setDiscussionVotes((prev) => ({
+            ...prev,
+            [newDiscussion.id]: { upvotes: 0, downvotes: 0, userVote: null }
+          }));
+
+          // Initialize interaction count
+          setInteractionCounts((prev) => ({
+            ...prev,
+            [newDiscussion.id]: 0
+          }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "community_discussions",
+          filter: `community_id=eq.${communityId}`,
+        },
+        async (payload) => {
+          // Fetch profile for the updated discussion
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, image_url, email')
+            .eq('id', payload.new.user_id)
+            .single();
+
+          const updatedDiscussion = {
+            ...payload.new,
+            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
+          } as Discussion;
+
+          setDiscussions((prev) =>
+            prev.map((d) => (d.id === updatedDiscussion.id ? updatedDiscussion : d))
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "community_discussions",
+          filter: `community_id=eq.${communityId}`,
+        },
+        (payload) => {
+          setDiscussions((prev) => prev.filter((d) => d.id !== payload.old.id));
+          setReplyCounts((prev) => {
+            const newCounts = { ...prev };
+            delete newCounts[payload.old.id];
+            return newCounts;
+          });
+          setDiscussionVotes((prev) => {
+            const newVotes = { ...prev };
+            delete newVotes[payload.old.id];
+            return newVotes;
+          });
+          setInteractionCounts((prev) => {
+            const newCounts = { ...prev };
+            delete newCounts[payload.old.id];
+            return newCounts;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "community_discussion_replies",
+        },
+        async (payload) => {
+          const reply = payload.new as Reply;
+          
+          // Fetch the discussion to check community_id
+          const { data: discussionData } = await supabase
+            .from('community_discussions')
+            .select('community_id')
+            .eq('id', reply.discussion_id)
+            .single();
+          
+          if (!discussionData || discussionData.community_id !== communityId) {
+            return; // Not for this community
+          }
+
+          // Update reply count
+          setReplyCounts((prev) => ({
+            ...prev,
+            [reply.discussion_id]: (prev[reply.discussion_id] || 0) + 1
+          }));
+
+          // Fetch the full reply with profile
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, image_url, email')
+            .eq('id', reply.user_id)
+            .single();
+
+          const fullReply = {
+            ...reply,
+            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
+          } as Reply & { profiles: Profile };
+
+          // Add to replies if discussion is currently expanded (using refs to avoid stale closure)
+          const isExpanded = expandedDiscussionsRef.current.has(reply.discussion_id) || expandedDiscussionIdRef.current === reply.discussion_id;
+          if (isExpanded) {
+            setReplies((prevReplies) => {
+              const existingReplies = prevReplies[reply.discussion_id] || [];
+              // Check if reply already exists
+              if (existingReplies.some(r => r.id === reply.id)) {
+                return prevReplies;
+              }
+              return {
+                ...prevReplies,
+                [reply.discussion_id]: [...existingReplies, fullReply]
+              };
+            });
+          }
+
+          // Initialize reply votes
+          setReplyVotes((prev) => ({
+            ...prev,
+            [reply.id]: { upvotes: 0, downvotes: 0, userVote: null }
+          }));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "community_discussion_replies",
+        },
+        async (payload) => {
+          const updatedReply = payload.new as Reply;
+          
+          // Update in replies if it exists
+          setReplies((prev) => {
+            const discussionReplies = prev[updatedReply.discussion_id];
+            if (!discussionReplies) return prev;
+            
+            return {
+              ...prev,
+              [updatedReply.discussion_id]: discussionReplies.map((r) =>
+                r.id === updatedReply.id ? updatedReply : r
+              )
+            };
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "community_discussion_replies",
+        },
+        (payload) => {
+          const deletedReply = payload.old as Reply;
+          
+          // Update reply count
+          setReplyCounts((prev) => ({
+            ...prev,
+            [deletedReply.discussion_id]: Math.max((prev[deletedReply.discussion_id] || 0) - 1, 0)
+          }));
+
+          // Remove from replies
+          setReplies((prev) => {
+            const discussionReplies = prev[deletedReply.discussion_id];
+            if (!discussionReplies) return prev;
+            
+            return {
+              ...prev,
+              [deletedReply.discussion_id]: discussionReplies.filter((r) => r.id !== deletedReply.id)
+            };
+          });
+
+          // Remove reply votes
+          setReplyVotes((prev) => {
+            const newVotes = { ...prev };
+            delete newVotes[deletedReply.id];
+            return newVotes;
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "community_discussion_votes",
+        },
+        () => {
+          // Refetch votes when any vote changes
+          // Use fetchDiscussionsData which will refetch all vote data
+          fetchDiscussionsData();
+        }
+      )
+      .subscribe((status) => {
+        console.log(`[Realtime] Subscription status: ${status}`);
+      });
+
+    // Set up visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Initialize polling interval based on current visibility
+    handleVisibilityChange();
+
+    // Cleanup function
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [communityId, user, isMember, fetchDiscussionsData]);
 
   const handleJoinCommunity = async () => {
     if (!user || !communityId) return;
@@ -767,39 +1238,79 @@ const CourseCommunity = () => {
       });
       setShowReplyInput(prev => ({ ...prev, [discussionId]: false }));
     } else {
-      // Expand - fetch replies
+      // Expand - fetch replies immediately
       setExpandedDiscussions(prev => new Set(prev).add(discussionId));
       
-      const { data: repliesData } = await supabase
-        .from('community_discussion_replies')
-        .select(`
-          id,
-          discussion_id,
-          user_id,
-          content,
-          created_at,
-          updated_at,
-          is_anonymous,
-          profiles:user_id (first_name, last_name, image_url, email)
-        `)
-        .eq('discussion_id', discussionId)
-        .order('created_at', { ascending: true });
+      if (!replies[discussionId]) {
+        const repliesResult = await supabase
+          .from('community_discussion_replies')
+          .select(`
+            id,
+            discussion_id,
+            user_id,
+            content,
+            created_at,
+            updated_at,
+            is_anonymous,
+            attachment_url,
+            attachment_type,
+            attachment_name,
+            profiles:user_id (first_name, last_name, image_url, email)
+          `)
+          .eq('discussion_id', discussionId)
+          .order('created_at', { ascending: true });
 
-      if (repliesData) {
-        setReplies(prev => ({ ...prev, [discussionId]: repliesData as any }));
+        if (repliesResult.data) {
+          setReplies(prev => ({ ...prev, [discussionId]: repliesResult.data as any }));
+          
+          // Fetch votes for replies in parallel (non-blocking)
+          const replyIds = repliesResult.data.map(r => r.id);
+          if (replyIds.length > 0 && user) {
+            supabase
+              .from('community_reply_votes')
+              .select('reply_id, vote_type, user_id')
+              .in('reply_id', replyIds)
+              .then(({ data: replyVotesData }) => {
+                if (replyVotesData) {
+                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
+                  replyIds.forEach(id => {
+                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
+                  });
+
+                  replyVotesData.forEach((vote) => {
+                    if (!votes[vote.reply_id]) {
+                      votes[vote.reply_id] = { upvotes: 0, downvotes: 0, userVote: null };
+                    }
+                    if (vote.vote_type === 'upvote') {
+                      votes[vote.reply_id].upvotes++;
+                    } else {
+                      votes[vote.reply_id].downvotes++;
+                    }
+                    if (vote.user_id === user.id) {
+                      votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+                    }
+                  });
+                  setReplyVotes(prev => ({ ...prev, ...votes }));
+                }
+              })
+              .catch(err => console.error('Failed to fetch reply votes:', err));
+          }
+        }
       }
+      
+      // Track interaction non-blocking
+      trackInteraction(discussionId).catch(err => {
+        console.error('Failed to track interaction:', err);
+      });
     }
   };
 
   const handleDiscussionClick = async (discussionId: string) => {
     setExpandedDiscussionId(discussionId);
     
-    // Track interaction when expanding discussion
-    await trackInteraction(discussionId);
-    
-    // Fetch replies if not already loaded
+    // Fetch replies immediately (don't wait for interaction tracking)
     if (!replies[discussionId]) {
-      const { data: repliesData } = await supabase
+      const repliesResult = await supabase
         .from('community_discussion_replies')
         .select(`
           id,
@@ -809,15 +1320,57 @@ const CourseCommunity = () => {
           created_at,
           updated_at,
           is_anonymous,
+          attachment_url,
+          attachment_type,
+          attachment_name,
           profiles:user_id (first_name, last_name, image_url, email)
         `)
         .eq('discussion_id', discussionId)
         .order('created_at', { ascending: true });
 
-      if (repliesData) {
-        setReplies(prev => ({ ...prev, [discussionId]: repliesData as any }));
+      if (repliesResult.data) {
+        // Set replies immediately so UI can render
+        setReplies(prev => ({ ...prev, [discussionId]: repliesResult.data as any }));
+        
+        // Fetch votes for replies in parallel (non-blocking)
+        const replyIds = repliesResult.data.map(r => r.id);
+        if (replyIds.length > 0 && user) {
+          supabase
+            .from('community_reply_votes')
+            .select('reply_id, vote_type, user_id')
+            .in('reply_id', replyIds)
+            .then(({ data: replyVotesData }) => {
+              if (replyVotesData) {
+                const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
+                replyIds.forEach(id => {
+                  votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
+                });
+
+                replyVotesData.forEach((vote) => {
+                  if (!votes[vote.reply_id]) {
+                    votes[vote.reply_id] = { upvotes: 0, downvotes: 0, userVote: null };
+                  }
+                  if (vote.vote_type === 'upvote') {
+                    votes[vote.reply_id].upvotes++;
+                  } else {
+                    votes[vote.reply_id].downvotes++;
+                  }
+                  if (vote.user_id === user.id) {
+                    votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+                  }
+                });
+                setReplyVotes(prev => ({ ...prev, ...votes }));
+              }
+            })
+            .catch(err => console.error('Failed to fetch reply votes:', err));
+        }
       }
     }
+    
+    // Track interaction non-blocking (fire and forget)
+    trackInteraction(discussionId).catch(err => {
+      console.error('Failed to track interaction:', err);
+    });
   };
 
   const handleReplySubmit = async (discussionId: string) => {

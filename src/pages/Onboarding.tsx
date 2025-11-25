@@ -17,6 +17,7 @@ interface Community {
 }
 
 const Onboarding = () => {
+  const [isLoading, setIsLoading] = useState(true);
   const [step, setStep] = useState<"username" | "communities">("username");
   const [username, setUsername] = useState("");
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
@@ -25,6 +26,7 @@ const Onboarding = () => {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [selectedCommunities, setSelectedCommunities] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -59,28 +61,60 @@ const Onboarding = () => {
 
       if (profileError) {
         console.error('[Onboarding] Error checking profile:', profileError);
+        setIsLoading(false);
         // Continue with onboarding if there's an error - user can still set username
+        return;
       }
 
       if (profile?.username) {
         console.log('[Onboarding] User already has username, redirecting to app');
-        navigate('/app');
+        navigate('/app', { replace: true });
         return;
       }
       
-      console.log('[Onboarding] User needs username, continuing onboarding');
+      console.log('[Onboarding] User needs username, checking if new user...');
 
-      // Fetch available communities
-      const { data: communitiesData, error } = await supabase
-        .from('course_communities')
-        .select('*')
-        .order('course_name');
+      // Check if user is new (has no community memberships = first time signup)
+      // vs returning user (has memberships but no username = needs username only)
+      const { data: membershipsData, error: membershipsError } = await supabase
+        .from('community_memberships')
+        .select('id')
+        .eq('user_id', session.user.id)
+        .limit(1);
 
-      if (error) {
-        console.error('Error fetching communities:', error);
-      } else {
-        setCommunities(communitiesData || []);
+      if (membershipsError) {
+        console.error('[Onboarding] Error checking memberships:', membershipsError);
       }
+
+      const hasMemberships = membershipsData && membershipsData.length > 0;
+      const isNew = !hasMemberships;
+      
+      console.log('[Onboarding] User type:', { isNew, hasMemberships: !!hasMemberships });
+      setIsNewUser(isNew);
+
+      // If returning user (has memberships), only show username step
+      // If new user (no memberships), show full onboarding flow
+      if (!isNew) {
+        console.log('[Onboarding] Returning user - showing username step only');
+        setStep("username");
+      } else {
+        console.log('[Onboarding] New user - showing full onboarding flow');
+        setStep("username");
+        
+        // Fetch available communities for new users
+        const { data: communitiesData, error } = await supabase
+          .from('course_communities')
+          .select('*')
+          .order('course_name');
+
+        if (error) {
+          console.error('Error fetching communities:', error);
+        } else {
+          setCommunities(communitiesData || []);
+        }
+      }
+
+      setIsLoading(false);
     };
 
     initializeOnboarding();
@@ -155,7 +189,13 @@ const Onboarding = () => {
         description: "Username created successfully!",
       });
 
-      setStep("communities");
+      // Only show communities step for new users
+      if (isNewUser) {
+        setStep("communities");
+      } else {
+        // Returning user - just finish onboarding
+        navigate('/app', { replace: true });
+      }
     } catch (error: any) {
       console.error('[Onboarding] Error in handleUsernameSubmit:', error);
       toast({
@@ -230,6 +270,20 @@ const Onboarding = () => {
     }
   };
 
+  // Show loading state until we know if onboarding is needed
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4 force-light-mode">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
+            <Book className="w-6 h-6 text-white animate-pulse" />
+          </div>
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-surface flex items-center justify-center p-4 force-light-mode">
       <Card className="w-full max-w-2xl p-8 bg-card shadow-card">
@@ -241,12 +295,14 @@ const Onboarding = () => {
           <span className="text-2xl font-bold text-foreground">MarkIt</span>
         </div>
 
-        {/* Progress Indicator */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          <div className={`w-3 h-3 rounded-full ${step === "username" ? "bg-primary" : "bg-muted"}`} />
-          <div className="w-12 h-0.5 bg-muted" />
-          <div className={`w-3 h-3 rounded-full ${step === "communities" ? "bg-primary" : "bg-muted"}`} />
-        </div>
+        {/* Progress Indicator - only show for new users */}
+        {isNewUser && (
+          <div className="flex items-center justify-center gap-2 mb-8">
+            <div className={`w-3 h-3 rounded-full ${step === "username" ? "bg-primary" : "bg-muted"}`} />
+            <div className="w-12 h-0.5 bg-muted" />
+            <div className={`w-3 h-3 rounded-full ${step === "communities" ? "bg-primary" : "bg-muted"}`} />
+          </div>
+        )}
 
         {step === "username" ? (
           <div className="space-y-6">

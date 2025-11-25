@@ -19,6 +19,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
+import NotificationDropdown from "@/components/NotificationDropdown";
 
 interface Profile {
   first_name: string | null;
@@ -259,9 +260,7 @@ const Communities = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Bell className="w-5 h-5" />
-            </Button>
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 
@@ -288,10 +287,6 @@ const Communities = () => {
                 <h1 className="text-3xl font-bold text-home-foreground">Communities</h1>
                 <p className="text-gray-600 dark:text-gray-400">Connect with fellow learners and join study groups</p>
               </div>
-              <Button className="bg-home-primary hover:bg-home-primary-hover text-white">
-                <Plus className="w-5 h-5 mr-2" />
-                Create Community
-              </Button>
             </div>
 
             {/* Search and Filters */}

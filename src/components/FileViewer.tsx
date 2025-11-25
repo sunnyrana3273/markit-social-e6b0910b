@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, Download, FileText, Image as ImageIcon, File } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,10 @@ export function FileViewer({ url, type, name, className }: FileViewerProps) {
           "border rounded-lg p-3 bg-muted/50 hover:bg-muted transition-colors cursor-pointer group",
           className
         )}
-        onClick={() => setIsExpanded(true)}
+        onClick={(e) => {
+          e.stopPropagation(); // Prevent parent click handlers from firing
+          setIsExpanded(true);
+        }}
       >
         <div className="flex items-center gap-3">
           <div className="flex-shrink-0">
@@ -82,7 +85,9 @@ export function FileViewer({ url, type, name, className }: FileViewerProps) {
       </div>
 
       <Dialog open={isExpanded} onOpenChange={setIsExpanded}>
-        <DialogContent className="max-w-6xl max-h-[95vh] p-0 bg-transparent border-none shadow-none">
+        <DialogContent className="max-w-6xl max-h-[95vh] p-0 bg-transparent border-none shadow-none [&>button]:hidden">
+          <DialogTitle className="sr-only">File Preview: {name}</DialogTitle>
+          <DialogDescription className="sr-only">Preview of {name}</DialogDescription>
           <div className="relative w-full h-full flex items-center justify-center p-4">
             {isImage ? (
               <img

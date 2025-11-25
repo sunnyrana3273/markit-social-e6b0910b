@@ -32,6 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
 import { useTheme } from "@/contexts/ThemeContext";
+import NotificationDropdown from "@/components/NotificationDropdown";
 
 interface Profile {
   first_name: string | null;
@@ -372,9 +373,7 @@ const Dashboard = () => {
               />
               <Moon className={`w-4 h-4 transition-opacity ${theme === 'dark' ? 'opacity-100' : 'opacity-40'}`} />
             </div>
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Bell className="w-5 h-5" />
-            </Button>
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 

@@ -50,6 +50,7 @@ import { z } from "zod";
 import SettingsModal from "@/components/SettingsModal";
 import { FriendChat } from "@/components/FriendChat";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import NotificationDropdown from "@/components/NotificationDropdown";
 
 interface Profile {
   first_name: string | null;
@@ -932,85 +933,22 @@ const Friends = () => {
               <Link to="/friends">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface bg-home-surface">Friends</Button>
               </Link>
+              <Button 
+                variant="ghost" 
+                className="text-home-foreground hover:bg-home-surface"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && (window as any).testNotification) {
+                    (window as any).testNotification();
+                  }
+                }}
+              >
+                Test Notification
+              </Button>
             </nav>
           </div>
           
           <div className="flex items-center gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface relative">
-                  <Bell className="w-5 h-5" />
-                  {incomingRequests.length > 0 && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center text-xs text-white font-medium">
-                      {incomingRequests.length}
-                    </div>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <div className="p-3 border-b">
-                  <h3 className="font-semibold text-home-foreground">Notifications</h3>
-                </div>
-                {incomingRequests.length > 0 ? (
-                  <div className="max-h-60 overflow-y-auto">
-                    {incomingRequests.slice(0, 5).map((request) => (
-                      <DropdownMenuItem key={request.user_id} className="p-3">
-                        <div className="flex items-center gap-3 w-full">
-                          <Avatar className="w-8 h-8">
-                            <AvatarImage src={request.profiles?.image_url} />
-                            <AvatarFallback className="bg-home-primary text-white text-xs">
-                              {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-home-foreground">
-                              {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
-                            </p>
-                            <p className="text-xs text-gray-600 dark:text-gray-400">wants to be your friend</p>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAcceptRequest(request.user_id, user?.id!);
-                              }}
-                              className="h-6 w-6 p-0 bg-green-500 hover:bg-green-600"
-                              disabled={processingRequestId === request.user_id}
-                            >
-                              {processingRequestId === request.user_id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <CheckCircle className="w-3 h-3" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeclineRequest(request.user_id, user?.id!);
-                              }}
-                              className="h-6 w-6 p-0 bg-red-500 hover:bg-red-600"
-                              disabled={processingRequestId === request.user_id}
-                            >
-                              {processingRequestId === request.user_id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <XCircle className="w-3 h-3" />
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                ) : (
-                  <DropdownMenuItem className="p-4 text-center text-gray-500">
-                    No notifications
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 

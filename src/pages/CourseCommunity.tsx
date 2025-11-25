@@ -59,6 +59,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import SettingsModal from "@/components/SettingsModal";
 import { FileViewer } from "@/components/FileViewer";
+import NotificationDropdown from "@/components/NotificationDropdown";
 
 interface Profile {
   first_name: string | null;
@@ -441,7 +442,26 @@ const CourseCommunity = () => {
   };
 
   const handleCreateDiscussion = async () => {
-    if (!user || !communityId || !newDiscussionTitle || !newDiscussionContent) return;
+    console.log('[handleCreateDiscussion] Starting discussion creation...');
+    console.log('[handleCreateDiscussion] Inputs:', {
+      user: user?.id,
+      communityId,
+      title: newDiscussionTitle,
+      content: newDiscussionContent?.substring(0, 50) + '...',
+      isAnonymous: newDiscussionAnonymous,
+      hasFile: !!newDiscussionFile,
+      fileName: newDiscussionFile?.name
+    });
+
+    if (!user || !communityId || !newDiscussionTitle || !newDiscussionContent) {
+      console.error('[handleCreateDiscussion] Validation failed:', {
+        hasUser: !!user,
+        hasCommunityId: !!communityId,
+        hasTitle: !!newDiscussionTitle,
+        hasContent: !!newDiscussionContent
+      });
+      return;
+    }
 
     let attachmentUrl: string | null = null;
     let attachmentType: string | null = null;
@@ -449,54 +469,125 @@ const CourseCommunity = () => {
 
     // Upload file if present
     if (newDiscussionFile) {
+      console.log('[handleCreateDiscussion] Uploading file:', {
+        name: newDiscussionFile.name,
+        type: newDiscussionFile.type,
+        size: newDiscussionFile.size
+      });
       setIsUploadingDiscussionFile(true);
-      const { url, error } = await uploadFile(newDiscussionFile);
-      if (error) {
+      try {
+        const { url, error } = await uploadFile(newDiscussionFile);
+        if (error) {
+          console.error('[handleCreateDiscussion] File upload error:', error);
+          setIsUploadingDiscussionFile(false);
+          toast({
+            title: "Error",
+            description: error.message || "Failed to upload file",
+            variant: "destructive"
+          });
+          return;
+        }
+        console.log('[handleCreateDiscussion] File uploaded successfully:', url);
+        attachmentUrl = url;
+        attachmentType = newDiscussionFile.type;
+        attachmentName = newDiscussionFile.name;
+        setIsUploadingDiscussionFile(false);
+      } catch (uploadError) {
+        console.error('[handleCreateDiscussion] File upload exception:', uploadError);
         setIsUploadingDiscussionFile(false);
         toast({
           title: "Error",
-          description: error.message || "Failed to upload file",
+          description: "Failed to upload file",
           variant: "destructive"
         });
         return;
       }
-      attachmentUrl = url;
-      attachmentType = newDiscussionFile.type;
-      attachmentName = newDiscussionFile.name;
-      setIsUploadingDiscussionFile(false);
     }
 
-    const { data: newDiscussion, error } = await supabase
-      .from('community_discussions')
-      .insert({
-        community_id: communityId,
-        user_id: user.id,
-        title: newDiscussionTitle,
-        content: newDiscussionContent,
-        is_anonymous: newDiscussionAnonymous,
-        attachment_url: attachmentUrl,
-        attachment_type: attachmentType,
-        attachment_name: attachmentName
-      })
-      .select(`
-        *,
-        profiles:user_id (first_name, last_name, image_url, email)
-      `)
-      .single();
+    const discussionData: any = {
+      community_id: communityId,
+      user_id: user.id,
+      title: newDiscussionTitle,
+      content: newDiscussionContent,
+      is_anonymous: newDiscussionAnonymous
+    };
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create discussion",
-        variant: "destructive"
+    // Only include attachment fields if we have an attachment
+    if (attachmentUrl) {
+      discussionData.attachment_url = attachmentUrl;
+      discussionData.attachment_type = attachmentType;
+      discussionData.attachment_name = attachmentName;
+    }
+
+    console.log('[handleCreateDiscussion] Inserting discussion to database:', {
+      ...discussionData,
+      content: discussionData.content.substring(0, 50) + '...'
+    });
+
+    try {
+      console.log('[handleCreateDiscussion] Making Supabase insert call...');
+      const insertResult = await supabase
+        .from('community_discussions')
+        .insert(discussionData)
+        .select(`
+          *,
+          profiles:user_id (first_name, last_name, image_url, email)
+        `)
+        .single();
+      
+      console.log('[handleCreateDiscussion] Insert result received:', {
+        hasData: !!insertResult.data,
+        hasError: !!insertResult.error,
+        error: insertResult.error,
+        data: insertResult.data ? { id: insertResult.data.id, title: insertResult.data.title } : null
       });
-    } else {
+
+      const { data: newDiscussion, error } = insertResult;
+
+      if (error) {
+        console.error('[handleCreateDiscussion] Database insert error:', error);
+        console.error('[handleCreateDiscussion] Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          fullError: JSON.stringify(error, null, 2)
+        });
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create discussion",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!newDiscussion) {
+        console.error('[handleCreateDiscussion] No data returned from insert, but no error either');
+        toast({
+          title: "Error",
+          description: "Failed to create discussion - no data returned",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('[handleCreateDiscussion] Discussion created successfully:', {
+        id: newDiscussion.id,
+        title: newDiscussion.title
+      });
+      
       // Add the new discussion to the top of the list
-      setDiscussions(prev => [newDiscussion as any, ...prev]);
+      console.log('[handleCreateDiscussion] Updating discussions state...');
+      setDiscussions(prev => {
+        const updated = [newDiscussion as any, ...prev];
+        console.log('[handleCreateDiscussion] Updated discussions list, new count:', updated.length);
+        return updated;
+      });
       
       // Initialize reply count for the new discussion
       setReplyCounts(prev => ({ ...prev, [newDiscussion.id]: 0 }));
       
+      console.log('[handleCreateDiscussion] Clearing form fields...');
       setNewDiscussionTitle("");
       setNewDiscussionContent("");
       setNewDiscussionAnonymous(false);
@@ -507,9 +598,23 @@ const CourseCommunity = () => {
       }
       setNewDiscussionFile(null);
       setShowNewDiscussion(false);
+      console.log('[handleCreateDiscussion] Form cleared and UI updated');
       toast({
         title: "Success",
         description: "Discussion created!"
+      });
+      console.log('[handleCreateDiscussion] Function completed successfully');
+    } catch (dbError) {
+      console.error('[handleCreateDiscussion] Database insert exception:', dbError);
+      console.error('[handleCreateDiscussion] Exception details:', {
+        message: dbError instanceof Error ? dbError.message : String(dbError),
+        stack: dbError instanceof Error ? dbError.stack : undefined,
+        fullError: JSON.stringify(dbError, Object.getOwnPropertyNames(dbError), 2)
+      });
+      toast({
+        title: "Error",
+        description: "Failed to create discussion",
+        variant: "destructive"
       });
     }
   };
@@ -1101,9 +1206,7 @@ const CourseCommunity = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface">
-              <Bell className="w-5 h-5" />
-            </Button>
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1705,9 +1808,9 @@ const CourseCommunity = () => {
                                               </Button>
                                             )}
                                           </div>
-                                          <p className="text-sm text-gray-600 dark:text-gray-400">{reply.content}</p>
+                                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{reply.content}</p>
                                           {reply.attachment_url && reply.attachment_type && reply.attachment_name && (
-                                            <div className="mt-2">
+                                            <div className="mt-2 mb-2">
                                               <FileViewer
                                                 url={reply.attachment_url}
                                                 type={reply.attachment_type}
@@ -1715,6 +1818,65 @@ const CourseCommunity = () => {
                                               />
                                             </div>
                                           )}
+                                          {/* Vote Buttons */}
+                                          <TooltipProvider>
+                                            <div className="flex items-center gap-1 mt-2">
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleReplyVote(reply.id, 'upvote');
+                                                    }}
+                                                    className={`h-6 px-2 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 ${
+                                                      replyVotes[reply.id]?.userVote === 'upvote' 
+                                                        ? 'text-green-600 dark:text-green-400' 
+                                                        : ''
+                                                    }`}
+                                                  >
+                                                    <ThumbsUp className={`w-3 h-3 mr-1 ${
+                                                      replyVotes[reply.id]?.userVote === 'upvote' 
+                                                        ? 'fill-green-600 dark:fill-green-400' 
+                                                        : ''
+                                                    }`} />
+                                                    {replyVotes[reply.id]?.upvotes || 0}
+                                                  </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p>Upvote helpful replies</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleReplyVote(reply.id, 'downvote');
+                                                    }}
+                                                    className={`h-6 px-2 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 ${
+                                                      replyVotes[reply.id]?.userVote === 'downvote' 
+                                                        ? 'text-red-600 dark:text-red-400' 
+                                                        : ''
+                                                    }`}
+                                                  >
+                                                    <ThumbsDown className={`w-3 h-3 mr-1 ${
+                                                      replyVotes[reply.id]?.userVote === 'downvote' 
+                                                        ? 'fill-red-600 dark:fill-red-400' 
+                                                        : ''
+                                                    }`} />
+                                                    {replyVotes[reply.id]?.downvotes || 0}
+                                                  </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p>Downvote unhelpful replies</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </div>
+                                          </TooltipProvider>
                                         </div>
                                       </div>
                                     ))}

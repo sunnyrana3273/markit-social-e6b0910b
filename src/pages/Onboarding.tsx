@@ -31,26 +31,44 @@ const Onboarding = () => {
   useEffect(() => {
     document.title = "MarkIt | Onboarding";
     const initializeOnboarding = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[Onboarding] Initializing onboarding...');
+      
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('[Onboarding] Session error:', sessionError);
+        navigate('/auth');
+        return;
+      }
       
       if (!session) {
+        console.log('[Onboarding] No session, redirecting to auth');
         navigate('/auth');
         return;
       }
 
+      console.log('[Onboarding] Session found:', { userId: session.user.id });
       setUserId(session.user.id);
 
       // Check if user already has username set
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('username')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('[Onboarding] Error checking profile:', profileError);
+        // Continue with onboarding if there's an error - user can still set username
+      }
 
       if (profile?.username) {
+        console.log('[Onboarding] User already has username, redirecting to app');
         navigate('/app');
         return;
       }
+      
+      console.log('[Onboarding] User needs username, continuing onboarding');
 
       // Fetch available communities
       const { data: communitiesData, error } = await supabase
@@ -114,6 +132,7 @@ const Onboarding = () => {
     }
 
     setIsSubmitting(true);
+    console.log('[Onboarding] Submitting username:', username, 'for user:', userId);
 
     try {
       if (!userId) {
@@ -125,13 +144,23 @@ const Onboarding = () => {
         .update({ username })
         .eq('id', userId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[Onboarding] Error updating username:', error);
+        throw error;
+      }
+
+      console.log('[Onboarding] Username updated successfully');
+      toast({
+        title: "Success",
+        description: "Username created successfully!",
+      });
 
       setStep("communities");
     } catch (error: any) {
+      console.error('[Onboarding] Error in handleUsernameSubmit:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to create username",
         variant: "destructive",
       });
     } finally {
@@ -153,6 +182,7 @@ const Onboarding = () => {
 
   const handleFinish = async () => {
     setIsSubmitting(true);
+    console.log('[Onboarding] Finishing onboarding for user:', userId);
 
     try {
       if (!userId) {
@@ -161,6 +191,7 @@ const Onboarding = () => {
 
       // Join selected communities
       if (selectedCommunities.size > 0) {
+        console.log('[Onboarding] Joining communities:', Array.from(selectedCommunities));
         const memberships = Array.from(selectedCommunities).map(communityId => ({
           user_id: userId,
           community_id: communityId
@@ -170,19 +201,28 @@ const Onboarding = () => {
           .from('community_memberships')
           .insert(memberships);
 
-        if (error) throw error;
+        if (error) {
+          console.error('[Onboarding] Error joining communities:', error);
+          throw error;
+        }
+        console.log('[Onboarding] Successfully joined communities');
       }
 
+      console.log('[Onboarding] Onboarding complete, navigating to app');
       toast({
         title: "Welcome!",
         description: "Your account is all set up",
       });
 
-      navigate('/app');
+      // Small delay to ensure state is updated before navigation
+      setTimeout(() => {
+        navigate('/app', { replace: true });
+      }, 100);
     } catch (error: any) {
+      console.error('[Onboarding] Error in handleFinish:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to complete onboarding",
         variant: "destructive",
       });
     } finally {
@@ -305,15 +345,7 @@ const Onboarding = () => {
             <div className="flex gap-3">
               <Button
                 onClick={handleFinish}
-                variant="outline"
-                className="flex-1"
-                disabled={isSubmitting}
-              >
-                Skip for now
-              </Button>
-              <Button
-                onClick={handleFinish}
-                className="flex-1"
+                className="w-full"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (

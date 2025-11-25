@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
@@ -32,14 +33,14 @@ const App = () => (
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/features" element={<Features />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/app" element={<Dashboard />} />
-          <Route path="/upload" element={<Upload />} />
-          <Route path="/document/:fileId" element={<DocumentEditor />} />
-          <Route path="/communities" element={<Communities />} />
-          <Route path="/community/:communityId" element={<CourseCommunity />} />
-          <Route path="/friends" element={<Friends />} />
-          <Route path="/session/:sessionId" element={<StudySession />} />
-          <Route path="/session/new" element={<StudySession />} />
+          <Route path="/app" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+          <Route path="/document/:fileId" element={<ProtectedRoute><DocumentEditor /></ProtectedRoute>} />
+          <Route path="/communities" element={<ProtectedRoute><Communities /></ProtectedRoute>} />
+          <Route path="/community/:communityId" element={<ProtectedRoute><CourseCommunity /></ProtectedRoute>} />
+          <Route path="/friends" element={<ProtectedRoute><Friends /></ProtectedRoute>} />
+          <Route path="/session/:sessionId" element={<ProtectedRoute><StudySession /></ProtectedRoute>} />
+          <Route path="/session/new" element={<ProtectedRoute><StudySession /></ProtectedRoute>} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

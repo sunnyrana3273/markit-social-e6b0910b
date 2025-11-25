@@ -11,6 +11,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   BookOpen, 
   Users, 
@@ -29,7 +32,8 @@ import {
   CheckCircle,
   XCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Loader2
 } from "lucide-react";
 import { 
   DropdownMenu,
@@ -113,11 +117,13 @@ const Friends = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const [outgoingRequests, setOutgoingRequests] = useState<any[]>([]);
   const [isFriendRequestsExpanded, setIsFriendRequestsExpanded] = useState(false);
   const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
+  const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "MarkIt | Friends";
@@ -141,11 +147,9 @@ const Friends = () => {
     localStorage.setItem('friendsChatClosed', 'false');
   };
 
-  useEffect(() => {
-    let friendsInterval: number | undefined;
-
-    const fetchFriendsData = async (userId: string) => {
-      try {
+  // Fetch friends data function (moved outside useEffect for reusability)
+  const fetchFriendsData = async (userId: string) => {
+    try {
         const { data: friendsData, error: friendsError } = await supabase
           .from('friends')
           .select('user_id, friend_id')
@@ -234,11 +238,14 @@ const Friends = () => {
           })
         );
 
-        setFriendsWithMetrics(friendsWithMetricsData);
-      } catch (error) {
-        console.error('[Friends] Unexpected error fetching friends data:', error);
-      }
-    };
+      setFriendsWithMetrics(friendsWithMetricsData);
+    } catch (error) {
+      console.error('[Friends] Unexpected error fetching friends data:', error);
+    }
+  };
+
+  useEffect(() => {
+    let friendsInterval: number | undefined;
 
     const initializeUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -692,7 +699,9 @@ const Friends = () => {
   };
 
   const handleSendFriendRequest = async () => {
-    if (!user || !searchedUser) return;
+    if (!user || !searchedUser || isSendingRequest) return;
+
+    setIsSendingRequest(true);
 
     try {
       const { error } = await supabase
@@ -711,43 +720,59 @@ const Friends = () => {
       });
 
       // Refresh outgoing requests to show the new request
-      const { data: outgoingFriendsData } = await supabase
-        .from('friends')
-        .select('friend_id, created_at')
-        .eq('user_id', user.id)
-        .eq('status', 'pending');
+      try {
+        const { data: outgoingFriendsData, error: outgoingError } = await supabase
+          .from('friends')
+          .select('friend_id, created_at')
+          .eq('user_id', user.id)
+          .eq('status', 'pending');
 
-      if (outgoingFriendsData && outgoingFriendsData.length > 0) {
-        const friendIds = outgoingFriendsData.map(req => req.friend_id);
-        const { data: outgoingProfilesData } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name, image_url, email')
-          .in('id', friendIds);
+        if (outgoingError) {
+          console.warn('Error fetching outgoing requests:', outgoingError);
+        } else if (outgoingFriendsData && outgoingFriendsData.length > 0) {
+          const friendIds = outgoingFriendsData.map(req => req.friend_id);
+          const { data: outgoingProfilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, username, first_name, last_name, image_url, email')
+            .in('id', friendIds);
 
-        if (outgoingProfilesData) {
-          const outgoingRequests = outgoingFriendsData.map(friends => {
-            const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
-            return { ...friends, profiles: profile };
-          });
-          setOutgoingRequests(outgoingRequests);
+          if (profilesError) {
+            console.warn('Error fetching profiles:', profilesError);
+          } else if (outgoingProfilesData) {
+            const outgoingRequests = outgoingFriendsData.map(friends => {
+              const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
+              return { ...friends, profiles: profile };
+            });
+            setOutgoingRequests(outgoingRequests);
+          }
         }
+      } catch (refreshError) {
+        console.warn('Error refreshing outgoing requests:', refreshError);
+        // Don't fail the whole operation if refresh fails
       }
 
+      // Reset form and close dialog
       setIsAddFriendOpen(false);
       setSearchUsername("");
       setSearchedUser(null);
       setSearchError("");
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending friend request:', error);
       toast({
         title: "Error",
-        description: "Failed to send friend request",
+        description: error.message || "Failed to send friend request",
         variant: "destructive"
       });
+    } finally {
+      setIsSendingRequest(false);
     }
   };
 
   const handleAcceptRequest = async (userId: string, friendId: string) => {
+    if (processingRequestId === userId) return; // Prevent duplicate clicks
+    
+    setProcessingRequestId(userId);
+    
     try {
       // Update the friend request to accepted
       const { error: updateError } = await supabase
@@ -758,16 +783,26 @@ const Friends = () => {
 
       if (updateError) throw updateError;
 
-      // Create the reciprocal friendship
-      const { error: insertError } = await supabase
+      // Check if reciprocal friendship already exists
+      const { data: existingReciprocal } = await supabase
         .from('friends')
-        .insert({
-          user_id: friendId,
-          friend_id: userId,
-          status: 'accepted'
-        });
+        .select('id')
+        .eq('user_id', friendId)
+        .eq('friend_id', userId)
+        .maybeSingle();
 
-      if (insertError) throw insertError;
+      // Create the reciprocal friendship if it doesn't exist
+      if (!existingReciprocal) {
+        const { error: insertError } = await supabase
+          .from('friends')
+          .insert({
+            user_id: friendId,
+            friend_id: userId,
+            status: 'accepted'
+          });
+
+        if (insertError) throw insertError;
+      }
 
       // Remove from incoming requests
       setIncomingRequests(prev => prev.filter(req => req.user_id !== userId));
@@ -777,19 +812,27 @@ const Friends = () => {
         description: "Friend request accepted!"
       });
 
-      // Refresh the page to show updated friends list
-      window.location.reload();
-    } catch (error) {
+      // Refresh friends data instead of reloading the page
+      if (user) {
+        await fetchFriendsData(user.id);
+      }
+    } catch (error: any) {
       console.error('Error accepting friend request:', error);
       toast({
         title: "Error",
-        description: "Failed to accept friend request",
+        description: error.message || "Failed to accept friend request",
         variant: "destructive"
       });
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
   const handleDeclineRequest = async (userId: string, friendId: string) => {
+    if (processingRequestId === userId) return; // Prevent duplicate clicks
+    
+    setProcessingRequestId(userId);
+    
     try {
       const { error } = await supabase
         .from('friends')
@@ -806,13 +849,15 @@ const Friends = () => {
         title: "Success",
         description: "Friend request declined"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error declining friend request:', error);
       toast({
         title: "Error",
-        description: "Failed to decline friend request",
+        description: error.message || "Failed to decline friend request",
         variant: "destructive"
       });
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
@@ -844,6 +889,7 @@ const Friends = () => {
   };
 
   const friendRequests: any[] = [];
+
 
   const statusStyles: Record<string, { label: string; badge: string; dot: string }> = {
     studying: {
@@ -930,8 +976,13 @@ const Friends = () => {
                                 handleAcceptRequest(request.user_id, user?.id!);
                               }}
                               className="h-6 w-6 p-0 bg-green-500 hover:bg-green-600"
+                              disabled={processingRequestId === request.user_id}
                             >
-                              <CheckCircle className="w-3 h-3" />
+                              {processingRequestId === request.user_id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-3 h-3" />
+                              )}
                             </Button>
                             <Button
                               size="sm"
@@ -940,8 +991,13 @@ const Friends = () => {
                                 handleDeclineRequest(request.user_id, user?.id!);
                               }}
                               className="h-6 w-6 p-0 bg-red-500 hover:bg-red-600"
+                              disabled={processingRequestId === request.user_id}
                             >
-                              <XCircle className="w-3 h-3" />
+                              {processingRequestId === request.user_id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <XCircle className="w-3 h-3" />
+                              )}
                             </Button>
                           </div>
                         </div>
@@ -1008,17 +1064,25 @@ const Friends = () => {
                           setSearchedUser(null);
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          if (e.key === 'Enter' && !isSearching) {
                             handleSearchUser();
                           }
                         }}
                         maxLength={30}
+                        disabled={isSearching || isSendingRequest}
                       />
                       <Button 
                         onClick={handleSearchUser}
-                        disabled={isSearching || !searchUsername.trim()}
+                        disabled={isSearching || isSendingRequest || !searchUsername.trim()}
                       >
-                        {isSearching ? "Searching..." : "Search"}
+                        {isSearching ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Searching...
+                          </>
+                        ) : (
+                          "Search"
+                        )}
                       </Button>
                     </div>
 
@@ -1047,9 +1111,19 @@ const Friends = () => {
                             onClick={handleSendFriendRequest}
                             size="sm"
                             className="bg-home-primary hover:bg-home-primary-hover text-white"
+                            disabled={isSendingRequest}
                           >
-                            <UserPlus className="w-4 h-4 mr-1" />
-                            Add Friend
+                            {isSendingRequest ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                                Sending...
+                              </>
+                            ) : (
+                              <>
+                                <UserPlus className="w-4 h-4 mr-1" />
+                                Add Friend
+                              </>
+                            )}
                           </Button>
                         </div>
                       </Card>
@@ -1360,18 +1434,38 @@ const Friends = () => {
                                   size="sm"
                                   onClick={() => handleAcceptRequest(request.user_id, user?.id!)}
                                   className="bg-green-500 hover:bg-green-600 text-white h-8 px-3"
+                                  disabled={processingRequestId === request.user_id}
                                 >
-                                  <CheckCircle className="w-3 h-3 mr-1" />
-                                  Accept
+                                  {processingRequestId === request.user_id ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      Processing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Accept
+                                    </>
+                                  )}
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleDeclineRequest(request.user_id, user?.id!)}
                                   className="border-gray-300 text-gray-600 hover:bg-gray-100 h-8 px-3"
+                                  disabled={processingRequestId === request.user_id}
                                 >
-                                  <XCircle className="w-3 h-3 mr-1" />
-                                  Decline
+                                  {processingRequestId === request.user_id ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      Processing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Decline
+                                    </>
+                                  )}
                                 </Button>
                               </div>
                             </div>
@@ -1454,18 +1548,6 @@ const Friends = () => {
               </div>
             </Card>
 
-            {/* Study Groups */}
-            <Card className="p-6 bg-card border border-border">
-              <h3 className="font-semibold text-home-foreground mb-4">Active Study Groups</h3>
-              <div className="text-center py-8 text-gray-600 dark:text-gray-400">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm mb-2">No study groups yet</p>
-                <p className="text-xs">Create or join a study group to collaborate!</p>
-              </div>
-              <Button variant="outline" className="w-full mt-4 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                Create Study Group
-              </Button>
-            </Card>
           </div>
         </div>
       </div>

@@ -41,23 +41,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect, useMemo } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import SettingsModal from "@/components/SettingsModal";
 import { FriendChat } from "@/components/FriendChat";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import NotificationDropdown from "@/components/NotificationDropdown";
-
-interface Profile {
-  first_name: string | null;
-  last_name: string | null;
-  image_url: string | null;
-  email: string;
-}
 
 interface FriendWithMetrics {
   friend_id: string;
@@ -100,8 +93,7 @@ interface SearchedUser {
 const Friends = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { user, profile } = useAuth();
   const [friendsWithMetrics, setFriendsWithMetrics] = useState<FriendWithMetrics[]>([]);
   const [userMetrics, setUserMetrics] = useState<{
     daily_metrics?: Array<{ date?: string | null; problems_completed: number; minutes_studied: number }>;
@@ -125,16 +117,34 @@ const Friends = () => {
   const [isFriendRequestsExpanded, setIsFriendRequestsExpanded] = useState(false);
   const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
+  const initializedUserIdRef = useRef<string | null>(null);
+
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     document.title = "MarkIt | Friends";
     
-    // Check if chat was previously closed
-    const chatClosed = localStorage.getItem('friendsChatClosed');
-    if (chatClosed === 'true') {
-      setChatFriend(null);
+    // Check for chat query parameter from notification click
+    const chatFriendId = searchParams.get('chat');
+    if (chatFriendId) {
+      // Find the friend and open chat
+      const friend = friendsWithMetrics.find(f => f.friend_id === chatFriendId);
+      if (friend) {
+        const friendName = friend.profiles.first_name || friend.profiles.email.split('@')[0];
+        setChatFriend({ id: chatFriendId, name: friendName });
+        localStorage.setItem('friendsChatClosed', 'false');
+        // Remove query parameter from URL
+        searchParams.delete('chat');
+        navigate(`/friends?${searchParams.toString()}`, { replace: true });
+      }
+    } else {
+      // Check if chat was previously closed
+      const chatClosed = localStorage.getItem('friendsChatClosed');
+      if (chatClosed === 'true') {
+        setChatFriend(null);
+      }
     }
-  }, []);
+  }, [searchParams, friendsWithMetrics, navigate]);
 
   const handleCloseChat = () => {
     setChatFriend(null);
@@ -246,172 +256,195 @@ const Friends = () => {
   };
 
   useEffect(() => {
-    let friendsInterval: number | undefined;
+    console.log('[Friends] useEffect triggered:', {
+      hasUser: !!user,
+      userId: user?.id,
+      initializedUserId: initializedUserIdRef.current,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!user?.id) {
+      console.log('[Friends] No user ID, resetting initialized ref');
+      initializedUserIdRef.current = null;
+      return;
+    }
 
-    const initializeUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    // Check if already initialized for this user
+    if (initializedUserIdRef.current === user.id) {
+      console.log('[Friends] Already initialized for this user, skipping');
+      return; // Already initialized for this user
+    }
+    
+    console.log('[Friends] Marking as initialized and starting data fetch for user:', user.id);
+    // Mark as initialized for this user
+    initializedUserIdRef.current = user.id;
+
+    let friendsInterval: number | undefined;
+    let isMounted = true;
+    const currentUserId = user.id;
+
+    const initializeData = async () => {
+      console.log('[Friends] initializeData called:', {
+        isMounted,
+        hasUser: !!user,
+        userId: user?.id,
+        currentUserId,
+        matches: user?.id === currentUserId,
+        timestamp: new Date().toISOString()
+      });
       
-      if (!session) {
-        navigate('/auth');
+      if (!isMounted || !user || user.id !== currentUserId) {
+        console.log('[Friends] initializeData cancelled:', {
+          isMounted,
+          hasUser: !!user,
+          userId: user?.id,
+          currentUserId
+        });
         return;
       }
 
-      setUser(session.user);
+      try {
+        console.log('[Friends] Starting to fetch user metrics and stats...');
+        // Fetch current user's metrics and stats
+        const { data: userMetricsData, error: userMetricsError } = await supabase
+          .from('daily_metrics')
+          .select('date, problems_completed, minutes_studied')
+          .eq('user_id', user.id)
+          .order('date', { ascending: false })
+          .limit(7);
 
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle();
+        if (userMetricsError) {
+          console.warn('[Friends] Error fetching user metrics:', userMetricsError);
+        }
 
-      if (!profileData && !error) {
-        const { error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: session.user.id,
-            email: session.user.email!,
-            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            last_name: session.user.user_metadata?.last_name || '',
-            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+        const { data: userStatsData, error: userStatsError } = await supabase
+          .from('user_stats')
+          .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (userStatsError) {
+          console.warn('[Friends] Error fetching user stats:', userStatsError);
+        }
+
+        if (isMounted && user.id === currentUserId) {
+          setUserMetrics({
+            daily_metrics: userMetricsData || [],
+            user_stats: userStatsData ? {
+              lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+              lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+              longest_streak: userStatsData.longest_streak ?? 0,
+              current_streak: userStatsData.current_streak ?? 0,
+            } : undefined,
           });
+        }
 
-        if (!createError) {
-          const { data: newProfile } = await supabase
+        if (!isMounted || !user || user.id !== currentUserId) {
+          console.log('[Friends] Skipping fetchFriendsData - component unmounted or user changed');
+          return;
+        }
+        
+        console.log('[Friends] Calling fetchFriendsData for user:', user.id);
+        await fetchFriendsData(user.id);
+        console.log('[Friends] fetchFriendsData completed');
+
+        // Fetch incoming friend requests (where current user is the friend_id)
+        const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
+          .from('friends')
+          .select('user_id, created_at')
+          .eq('friend_id', user.id)
+          .eq('status', 'pending');
+
+        if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
+          const userIds = incomingFriendsData.map(req => req.user_id);
+          const { data: incomingProfilesData } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setProfile(newProfile);
+            .select('id, username, first_name, last_name, image_url, email')
+            .in('id', userIds);
+
+          if (incomingProfilesData && isMounted && user.id === currentUserId) {
+            const incomingRequests = incomingFriendsData.map(friends => {
+              const profile = incomingProfilesData.find(p => p.id === friends.user_id);
+              return { ...friends, profiles: profile };
+            });
+            setIncomingRequests(incomingRequests);
+          }
+        } else if (incomingFriendsError) {
+          console.warn('[Friends] Incoming friend requests error:', incomingFriendsError);
         }
-      } else if (profileData) {
-        setProfile(profileData);
-      }
 
-      // Fetch current user's metrics and stats
-      const { data: userMetricsData, error: userMetricsError } = await supabase
-        .from('daily_metrics')
-        .select('date, problems_completed, minutes_studied')
-        .eq('user_id', session.user.id)
-        .order('date', { ascending: false })
-        .limit(7);
+        if (!isMounted || !user || user.id !== currentUserId) return;
+        // Fetch outgoing friend requests (where current user is the user_id)
+        const { data: outgoingFriendsData, error: outgoingFriendsError } = await supabase
+          .from('friends')
+          .select('friend_id, created_at')
+          .eq('user_id', user.id)
+          .eq('status', 'pending');
 
-      if (userMetricsError) {
-        console.warn('[Friends] Error fetching user metrics:', userMetricsError);
-      }
+        if (outgoingFriendsData && !outgoingFriendsError && outgoingFriendsData.length > 0) {
+          const friendIds = outgoingFriendsData.map(req => req.friend_id);
+          const { data: outgoingProfilesData } = await supabase
+            .from('profiles')
+            .select('id, username, first_name, last_name, image_url, email')
+            .in('id', friendIds);
 
-      const { data: userStatsData, error: userStatsError } = await supabase
-        .from('user_stats')
-        .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-
-      if (userStatsError) {
-        console.warn('[Friends] Error fetching user stats:', userStatsError);
-      }
-
-      setUserMetrics({
-        daily_metrics: userMetricsData || [],
-        user_stats: userStatsData ? {
-          lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
-          lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
-          longest_streak: userStatsData.longest_streak ?? 0,
-          current_streak: userStatsData.current_streak ?? 0,
-        } : undefined,
-      });
-
-      await fetchFriendsData(session.user.id);
-
-      // Fetch incoming friend requests (where current user is the friend_id)
-      const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
-        .from('friends')
-        .select('user_id, created_at')
-        .eq('friend_id', session.user.id)
-        .eq('status', 'pending');
-
-      if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
-        const userIds = incomingFriendsData.map(req => req.user_id);
-        const { data: incomingProfilesData } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name, image_url, email')
-          .in('id', userIds);
-
-        if (incomingProfilesData) {
-          const incomingRequests = incomingFriendsData.map(friends => {
-            const profile = incomingProfilesData.find(p => p.id === friends.user_id);
-            return { ...friends, profiles: profile };
-          });
-          setIncomingRequests(incomingRequests);
+          if (outgoingProfilesData && isMounted && user.id === currentUserId) {
+            const outgoingRequests = outgoingFriendsData.map(friends => {
+              const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
+              return { ...friends, profiles: profile };
+            });
+            setOutgoingRequests(outgoingRequests);
+          }
         }
-      } else if (incomingFriendsError) {
-        console.warn('[Friends] Incoming friend requests error:', incomingFriendsError);
+      } catch (error) {
+        console.error('[Friends] Error in initializeData:', error);
       }
+    };
 
-      // Fetch outgoing friend requests (where current user is the user_id)
-      const { data: outgoingFriendsData, error: outgoingFriendsError } = await supabase
-        .from('friends')
-        .select('friend_id, created_at')
-        .eq('user_id', session.user.id)
-        .eq('status', 'pending');
+    initializeData();
 
-      if (outgoingFriendsData && !outgoingFriendsError && outgoingFriendsData.length > 0) {
-        const friendIds = outgoingFriendsData.map(req => req.friend_id);
-        const { data: outgoingProfilesData } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name, image_url, email')
-          .in('id', friendIds);
-
-        if (outgoingProfilesData) {
-          const outgoingRequests = outgoingFriendsData.map(friends => {
-            const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
-            return { ...friends, profiles: profile };
-          });
-          setOutgoingRequests(outgoingRequests);
-        }
-      }
-
-      friendsInterval = window.setInterval(async () => {
-        await fetchFriendsData(session.user.id);
+    // Set up interval to refresh data every minute
+    friendsInterval = window.setInterval(async () => {
+      if (!isMounted || !user || user.id !== currentUserId) return;
+      
+      try {
+        await fetchFriendsData(user.id);
         // Refresh user metrics too
         const { data: userMetricsData } = await supabase
           .from('daily_metrics')
           .select('date, problems_completed, minutes_studied')
-          .eq('user_id', session.user.id)
+          .eq('user_id', user.id)
           .order('date', { ascending: false })
           .limit(7);
         const { data: userStatsData } = await supabase
           .from('user_stats')
           .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
-          .eq('user_id', session.user.id)
+          .eq('user_id', user.id)
           .maybeSingle();
-        setUserMetrics({
-          daily_metrics: userMetricsData || [],
-          user_stats: userStatsData ? {
-            lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
-            lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
-            longest_streak: userStatsData.longest_streak ?? 0,
-            current_streak: userStatsData.current_streak ?? 0,
-          } : undefined,
-        });
-      }, 60000);
-    };
-
-    void initializeUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
+        
+        if (isMounted && user.id === currentUserId) {
+          setUserMetrics({
+            daily_metrics: userMetricsData || [],
+            user_stats: userStatsData ? {
+              lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+              lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+              longest_streak: userStatsData.longest_streak ?? 0,
+              current_streak: userStatsData.current_streak ?? 0,
+            } : undefined,
+          });
+        }
+      } catch (error) {
+        console.error('[Friends] Error in interval refresh:', error);
       }
-    });
+    }, 60000);
 
     return () => {
-      subscription.unsubscribe();
+      isMounted = false;
       if (friendsInterval) {
         window.clearInterval(friendsInterval);
       }
     };
-  }, [navigate]);
+  }, [user?.id]);
 
   // Presence tracking (online vs studying)
   useEffect(() => {
@@ -933,7 +966,7 @@ const Friends = () => {
               <Link to="/friends">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface bg-home-surface">Friends</Button>
               </Link>
-              <Button 
+                            <Button
                 variant="ghost" 
                 className="text-home-foreground hover:bg-home-surface"
                 onClick={() => {
@@ -943,12 +976,12 @@ const Friends = () => {
                 }}
               >
                 Test Notification
-              </Button>
+                            </Button>
             </nav>
-          </div>
+                          </div>
           
           <div className="flex items-center gap-3">
-            <NotificationDropdown user={user} profile={profile} />
+            <NotificationDropdown />
             <Button 
               variant="ghost" 
               size="icon" 

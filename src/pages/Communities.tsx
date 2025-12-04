@@ -17,16 +17,10 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import SettingsModal from "@/components/SettingsModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
 
-interface Profile {
-  first_name: string | null;
-  last_name: string | null;
-  image_url: string | null;
-  email: string;
-}
 
 interface JoinedCommunity {
   id: string;
@@ -41,9 +35,8 @@ interface JoinedCommunity {
 
 const Communities = () => {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [joinedCommunities, setJoinedCommunities] = useState<JoinedCommunity[]>([]);
   const [isCommunitiesMinimized, setIsCommunitiesMinimized] = useState(false);
@@ -52,92 +45,84 @@ const Communities = () => {
 
   useEffect(() => {
     document.title = "MarkIt | Communities";
-    const initializeUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    
+    console.log('[Communities] useEffect triggered:', {
+      hasUser: !!user,
+      userId: user?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!user?.id) {
+      console.log('[Communities] No user ID, skipping fetch');
+      return;
+    }
+
+    console.log('[Communities] Starting fetchJoinedCommunities for user:', user.id);
+    // Fetch joined communities
+    const fetchJoinedCommunities = async () => {
+      const userId = user.id;
       
-      if (!session) {
-        navigate('/auth');
+      const { data: joinedData, error } = await supabase
+        .from('community_memberships')
+        .select(`
+          id,
+          joined_at,
+          course_communities:community_id (
+            id,
+            course_name,
+            course_category,
+            description
+          )
+        `)
+        .eq('user_id', userId)
+        .order('joined_at', { ascending: false });
+
+      if (error) {
+        console.error('[Communities] Error fetching joined communities:', {
+          error,
+          userId,
+          timestamp: new Date().toISOString()
+        });
         return;
       }
 
-      setUser(session.user);
+      console.log('[Communities] Joined communities fetched:', {
+        count: joinedData?.length || 0,
+        userId,
+        timestamp: new Date().toISOString()
+      });
 
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (!profileData && !error) {
-        // No profile exists, create one
-        const { error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: session.user.id,
-            email: session.user.email!,
-            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            last_name: session.user.user_metadata?.last_name || '',
-            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-          });
-
-        if (!createError) {
-          // Fetch the newly created profile
-          const { data: newProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setProfile(newProfile);
-        }
-      } else if (profileData) {
-        setProfile(profileData);
-      }
-
-      // Fetch joined communities
-      if (session.user) {
-        const { data: joinedData } = await supabase
-          .from('community_memberships')
-          .select(`
-            id,
-            joined_at,
-            course_communities:community_id (
-              id,
-              course_name,
-              course_category,
-              description
-            )
-          `)
-          .eq('user_id', session.user.id)
-          .order('joined_at', { ascending: false });
-
-        if (joinedData) {
-          // Get visit history from localStorage
-          const visitKey = `community_visits_${session.user.id}`;
-          const visits = JSON.parse(localStorage.getItem(visitKey) || '{}');
+      if (joinedData) {
+        // Get visit history from localStorage
+        const visitKey = `community_visits_${userId}`;
+        const visits = JSON.parse(localStorage.getItem(visitKey) || '{}');
+        
+        // Sort by last visited time (most recent first)
+        const sortedData = [...joinedData].sort((a, b) => {
+          const aVisitTime = visits[a.course_communities.id];
+          const bVisitTime = visits[b.course_communities.id];
           
-          // Sort by last visited time (most recent first)
-          const sortedData = [...joinedData].sort((a, b) => {
-            const aVisitTime = visits[a.course_communities.id];
-            const bVisitTime = visits[b.course_communities.id];
-            
-            // If both have visit times, sort by most recent
-            if (aVisitTime && bVisitTime) {
-              return new Date(bVisitTime).getTime() - new Date(aVisitTime).getTime();
-            }
-            // If only one has visit time, prioritize it
-            if (aVisitTime && !bVisitTime) return -1;
-            if (!aVisitTime && bVisitTime) return 1;
-            // If neither has visit time, keep original order
-            return 0;
-          });
-          
-          setJoinedCommunities(sortedData as JoinedCommunity[]);
-        }
+          // If both have visit times, sort by most recent
+          if (aVisitTime && bVisitTime) {
+            return new Date(bVisitTime).getTime() - new Date(aVisitTime).getTime();
+          }
+          // If only one has visit time, prioritize it
+          if (aVisitTime && !bVisitTime) return -1;
+          if (!aVisitTime && bVisitTime) return 1;
+          // If neither has visit time, keep original order
+          return 0;
+        });
+        
+        console.log('[Communities] Setting joined communities:', {
+          count: sortedData.length,
+          timestamp: new Date().toISOString()
+        });
+        setJoinedCommunities(sortedData as JoinedCommunity[]);
       }
     };
 
-    initializeUser();
-  }, [navigate]);
+    fetchJoinedCommunities();
+  }, [user?.id]);
 
   const [communities, setCommunities] = useState<Array<{id: string, course_name: string, course_category: string}>>([]);
 
@@ -260,7 +245,7 @@ const Communities = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <NotificationDropdown user={user} profile={profile} />
+            <NotificationDropdown />
             <Button 
               variant="ghost" 
               size="icon" 

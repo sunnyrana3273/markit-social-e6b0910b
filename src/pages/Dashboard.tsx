@@ -29,17 +29,11 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import SettingsModal from "@/components/SettingsModal";
 import { useTheme } from "@/contexts/ThemeContext";
 import NotificationDropdown from "@/components/NotificationDropdown";
 
-interface Profile {
-  first_name: string | null;
-  last_name: string | null;
-  image_url: string | null;
-  email: string;
-}
 
 interface UploadedFile {
   id: string;
@@ -59,9 +53,8 @@ interface ProblemSet {
 const Dashboard = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme, themeColor, setThemeColor, resetThemeColor } = useTheme();
+  const { user, profile, loading: authLoading } = useAuth();
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [recentFiles, setRecentFiles] = useState<UploadedFile[]>([]);
   const [recentProblemSets, setRecentProblemSets] = useState<ProblemSet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,89 +64,80 @@ const Dashboard = () => {
   const [problemsToday, setProblemsToday] = useState<number>(0);
 
   useEffect(() => {
+    console.log('[Dashboard] Render:', {
+      authLoading,
+      hasUser: !!user,
+      userId: user?.id,
+      hasProfile: !!profile,
+      loading,
+      timestamp: new Date().toISOString()
+    });
+  }, [authLoading, user, profile, loading]);
+
+  useEffect(() => {
     document.title = "MarkIt | Dashboard";
-    // Check authentication and fetch profile
-    const initializeUser = async () => {
+    
+    console.log('[Dashboard] useEffect triggered:', {
+      authLoading,
+      hasUser: !!user,
+      userId: user?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (authLoading) {
+      console.log('[Dashboard] Auth still loading, waiting...');
+      return;
+    }
+    
+    if (!user) {
+      console.log('[Dashboard] No user, skipping file fetch');
+      return;
+    }
+
+    let isMounted = true;
+    console.log('[Dashboard] Starting file fetch for user:', user.id);
+    
+    // Fetch recent uploaded files (last 3)
+    const fetchFiles = async () => {
+      if (!user || !isMounted) {
+        console.log('[Dashboard] fetchFiles cancelled:', { hasUser: !!user, isMounted });
+        return;
+      }
+      
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          navigate('/auth');
-          return;
-        }
-
-        setUser(session.user);
-
-        // Fetch user profile
-        const { data: profileData, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        if (error) {
-          console.error('Error fetching profile:', error);
-        } else if (!profileData) {
-          // No profile exists, create one
-          console.log('No profile found for user, creating one...');
-          const { error: createError } = await supabase
-            .from('profiles')
-            .insert({
-              id: session.user.id,
-              email: session.user.email!,
-              first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-              last_name: session.user.user_metadata?.last_name || '',
-              image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-            });
-
-          if (createError) {
-            console.error('Error creating profile:', createError);
-          } else {
-            // Fetch the newly created profile
-            const { data: newProfile } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-            setProfile(newProfile);
-          }
-        } else {
-          setProfile(profileData);
-        }
-
-        // Fetch recent uploaded files (last 3)
         const { data: filesData, error: filesError } = await supabase
           .from('uploaded_files')
           .select('id, file_name, file_type, file_size, created_at')
-          .eq('clerk_user_id', session.user.id)
+          .eq('clerk_user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(3);
 
         if (filesError) {
-          console.error('Error fetching files:', filesError);
-        } else {
+          console.error('[Dashboard] Error fetching files:', filesError);
+        } else if (isMounted) {
+          console.log('[Dashboard] Files fetched successfully:', {
+            count: filesData?.length || 0,
+            timestamp: new Date().toISOString()
+          });
           setRecentFiles(filesData || []);
         }
       } catch (error) {
-        console.error('Error initializing user:', error);
+        console.error('[Dashboard] Exception fetching files:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          console.log('[Dashboard] Setting loading=false');
+          setLoading(false);
+        }
       }
     };
 
-    initializeUser();
+    fetchFiles();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        navigate('/auth');
-      } else {
-        setUser(session.user);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    return () => {
+      console.log('[Dashboard] Cleanup - unmounting');
+      isMounted = false;
+    };
+  }, [user?.id, authLoading]);
 
   useEffect(() => {
     // Aggregate today's minutes from localStorage keys written by DocumentEditor
@@ -373,7 +357,7 @@ const Dashboard = () => {
               />
               <Moon className={`w-4 h-4 transition-opacity ${theme === 'dark' ? 'opacity-100' : 'opacity-40'}`} />
             </div>
-            <NotificationDropdown user={user} profile={profile} />
+            <NotificationDropdown />
             <Button 
               variant="ghost" 
               size="icon" 

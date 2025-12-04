@@ -45,3 +45,4 @@ CREATE INDEX IF NOT EXISTS idx_discussion_interactions_discussion_id ON public.c
 CREATE INDEX IF NOT EXISTS idx_discussion_interactions_user_id ON public.community_discussion_interactions(user_id);
 
 
+

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Book, BookOpen, CheckCircle2, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
 interface Community {
@@ -17,6 +18,7 @@ interface Community {
 }
 
 const Onboarding = () => {
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [step, setStep] = useState<"username" | "communities">("username");
   const [username, setUsername] = useState("");
@@ -29,79 +31,88 @@ const Onboarding = () => {
   const [isNewUser, setIsNewUser] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const hasCheckedRef = useRef(false);
+  const hasRedirectedRef = useRef(false);
 
   useEffect(() => {
     document.title = "MarkIt | Onboarding";
+    
+    // Prevent multiple checks
+    if (hasCheckedRef.current) {
+      return;
+    }
+    
     const initializeOnboarding = async () => {
-      console.log('[Onboarding] Initializing onboarding...');
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error('[Onboarding] Session error:', sessionError);
-        navigate('/auth');
+      // Wait for auth to finish loading
+      if (authLoading) {
         return;
       }
       
-      if (!session) {
-        console.log('[Onboarding] No session, redirecting to auth');
-        navigate('/auth');
+      if (!user) {
+        navigate('/auth', { replace: true });
         return;
       }
 
-      console.log('[Onboarding] Session found:', { userId: session.user.id });
-      setUserId(session.user.id);
+      setUserId(user.id);
 
-      // Check if user already has username set
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', session.user.id)
-        .maybeSingle();
+      // Use profile from AuthContext if available, otherwise fetch
+      let profileData = profile;
+      
+      if (!profileData) {
+        const { data: fetchedProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .maybeSingle();
 
-      if (profileError) {
-        console.error('[Onboarding] Error checking profile:', profileError);
-        setIsLoading(false);
-        // Continue with onboarding if there's an error - user can still set username
-        return;
+        if (profileError) {
+          setIsLoading(false);
+          hasCheckedRef.current = true;
+          return;
+        }
+        
+        profileData = fetchedProfile;
       }
 
-      if (profile?.username) {
-        console.log('[Onboarding] User already has username, redirecting to app');
+      if (profileData?.username) {
+        // Prevent multiple redirects
+        if (hasRedirectedRef.current) {
+          return;
+        }
+        
+        hasCheckedRef.current = true;
+        hasRedirectedRef.current = true;
+        
+        // Refresh AuthContext to update the profile state
+        try {
+          await refreshProfile();
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error('[Onboarding] Error refreshing profile:', error);
+        }
+        
         navigate('/app', { replace: true });
         return;
       }
       
-      console.log('[Onboarding] User needs username, checking if new user...');
+      hasCheckedRef.current = true;
 
       // Check if user is new (has no community memberships = first time signup)
       // vs returning user (has memberships but no username = needs username only)
       const { data: membershipsData, error: membershipsError } = await supabase
         .from('community_memberships')
         .select('id')
-        .eq('user_id', session.user.id)
+        .eq('user_id', user.id)
         .limit(1);
-
-      if (membershipsError) {
-        console.error('[Onboarding] Error checking memberships:', membershipsError);
-      }
 
       const hasMemberships = membershipsData && membershipsData.length > 0;
       const isNew = !hasMemberships;
       
-      console.log('[Onboarding] User type:', { isNew, hasMemberships: !!hasMemberships });
       setIsNewUser(isNew);
+      setStep("username");
 
-      // If returning user (has memberships), only show username step
-      // If new user (no memberships), show full onboarding flow
-      if (!isNew) {
-        console.log('[Onboarding] Returning user - showing username step only');
-        setStep("username");
-      } else {
-        console.log('[Onboarding] New user - showing full onboarding flow');
-        setStep("username");
-        
-        // Fetch available communities for new users
+      // Fetch available communities for new users
+      if (isNew) {
         const { data: communitiesData, error } = await supabase
           .from('course_communities')
           .select('*')
@@ -117,8 +128,13 @@ const Onboarding = () => {
       setIsLoading(false);
     };
 
+    // Reset redirect flag when user changes
+    if (user?.id) {
+      hasRedirectedRef.current = false;
+    }
+    
     initializeOnboarding();
-  }, [navigate]);
+  }, [navigate, authLoading, user, profile, refreshProfile]);
 
   const checkUsernameAvailability = async (usernameToCheck: string) => {
     if (!usernameToCheck || usernameToCheck.length < 3) {
@@ -166,24 +182,22 @@ const Onboarding = () => {
     }
 
     setIsSubmitting(true);
-    console.log('[Onboarding] Submitting username:', username, 'for user:', userId);
+    const currentUserId = user?.id || userId;
 
     try {
-      if (!userId) {
+      if (!currentUserId) {
         throw new Error("User not authenticated");
       }
 
       const { error } = await supabase
         .from('profiles')
         .update({ username })
-        .eq('id', userId);
+        .eq('id', currentUserId);
 
       if (error) {
-        console.error('[Onboarding] Error updating username:', error);
         throw error;
       }
 
-      console.log('[Onboarding] Username updated successfully');
       toast({
         title: "Success",
         description: "Username created successfully!",
@@ -191,7 +205,7 @@ const Onboarding = () => {
 
       // Only show communities step for new users
       if (isNewUser) {
-        setStep("communities");
+      setStep("communities");
       } else {
         // Returning user - just finish onboarding
         navigate('/app', { replace: true });
@@ -222,18 +236,17 @@ const Onboarding = () => {
 
   const handleFinish = async () => {
     setIsSubmitting(true);
-    console.log('[Onboarding] Finishing onboarding for user:', userId);
+    const currentUserId = user?.id || userId;
 
     try {
-      if (!userId) {
+      if (!currentUserId) {
         throw new Error("User not authenticated");
       }
 
       // Join selected communities
       if (selectedCommunities.size > 0) {
-        console.log('[Onboarding] Joining communities:', Array.from(selectedCommunities));
         const memberships = Array.from(selectedCommunities).map(communityId => ({
-          user_id: userId,
+          user_id: currentUserId,
           community_id: communityId
         }));
 
@@ -242,13 +255,10 @@ const Onboarding = () => {
           .insert(memberships);
 
         if (error) {
-          console.error('[Onboarding] Error joining communities:', error);
           throw error;
         }
-        console.log('[Onboarding] Successfully joined communities');
       }
 
-      console.log('[Onboarding] Onboarding complete, navigating to app');
       toast({
         title: "Welcome!",
         description: "Your account is all set up",
@@ -297,11 +307,11 @@ const Onboarding = () => {
 
         {/* Progress Indicator - only show for new users */}
         {isNewUser && (
-          <div className="flex items-center justify-center gap-2 mb-8">
-            <div className={`w-3 h-3 rounded-full ${step === "username" ? "bg-primary" : "bg-muted"}`} />
-            <div className="w-12 h-0.5 bg-muted" />
-            <div className={`w-3 h-3 rounded-full ${step === "communities" ? "bg-primary" : "bg-muted"}`} />
-          </div>
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <div className={`w-3 h-3 rounded-full ${step === "username" ? "bg-primary" : "bg-muted"}`} />
+          <div className="w-12 h-0.5 bg-muted" />
+          <div className={`w-3 h-3 rounded-full ${step === "communities" ? "bg-primary" : "bg-muted"}`} />
+        </div>
         )}
 
         {step === "username" ? (

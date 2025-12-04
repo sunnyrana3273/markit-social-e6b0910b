@@ -51,7 +51,11 @@ const Index = () => {
               <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
             </Link>
             <Link to="/auth">
-              <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
+              <Button className="group relative overflow-hidden bg-gradient-to-r from-home-primary via-green-500 to-home-primary text-white font-semibold shadow-lg hover:shadow-xl hover:shadow-home-primary/50 transition-all duration-300 hover:scale-105 px-6">
+                <Sparkles className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform duration-300" />
+                Get Started
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
+              </Button>
             </Link>
           </div>
         </div>
@@ -165,7 +169,7 @@ const Index = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <TrendingUp className="w-4 h-4" />
-                    <span>95% Accuracy</span>
+                    <span>98% Accuracy</span>
                   </div>
                 </div>
               </div>

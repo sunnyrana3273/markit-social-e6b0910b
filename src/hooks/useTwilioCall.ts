@@ -91,11 +91,15 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
         callChannelRef.current = channel;
 
-        // Request microphone permission
+        // Request microphone permission and set up audio context
         console.log('[useTwilioCall] 🎤 Requesting microphone permission...');
         try {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           console.log('[useTwilioCall] ✅ Microphone permission granted');
+          
+          // Stop the stream immediately - we just needed permission
+          // Twilio will create its own audio streams
+          stream.getTracks().forEach(track => track.stop());
         } catch (err) {
           console.error('[useTwilioCall] ❌ Microphone permission denied:', err);
           setError('Microphone permission denied. Please enable microphone access.');
@@ -128,7 +132,9 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
         console.log('[useTwilioCall] ✅ Token received, initializing Twilio Device...');
         // Initialize Twilio Device
         const newDevice = new Device(data.token, {
-          logLevel: 4, // 4 = debug (maximum logging for testing)
+          logLevel: 1, // Reduced logging (was 4 for debug)
+          // Enable audio output management
+          allowIncomingWhileBusy: false,
         });
         console.log('[useTwilioCall] 📱 Device instance created');
 
@@ -231,23 +237,40 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
                 }
 
                 console.log('[useTwilioCall] ✅ Fetched caller profile:', displayName);
-                setIncomingCallFrom({ 
+                const callerInfo = { 
                   id: callerId, 
                   name: displayName,
                   avatar: profile.image_url
-                });
+                };
+                setIncomingCallFrom(callerInfo);
+                
+                // Dispatch custom event for notification system
+                window.dispatchEvent(new CustomEvent('incoming-call', {
+                  detail: callerInfo
+                }));
               }
             } catch (err) {
               console.error('[useTwilioCall] Exception fetching caller profile:', err);
               // Fallback: use caller ID as name
-              setIncomingCallFrom({ 
+              const fallbackInfo = { 
                 id: callerId, 
                 name: callerId.substring(0, 8) + '...',
                 avatar: null
-              });
+              };
+              setIncomingCallFrom(fallbackInfo);
+              
+              // Dispatch custom event for notification system
+              window.dispatchEvent(new CustomEvent('incoming-call', {
+                detail: fallbackInfo
+              }));
             }
           } else if (callerId && incomingCallFrom?.id === callerId) {
             console.log('[useTwilioCall] Caller info already available from notification');
+            
+            // Still dispatch event in case notification system wasn't listening yet
+            window.dispatchEvent(new CustomEvent('incoming-call', {
+              detail: incomingCallFrom
+            }));
           }
           
           // Set up call event listeners
@@ -255,11 +278,16 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
             console.log('[useTwilioCall] ✅✅✅ Call ACCEPTED!');
             console.log('[useTwilioCall] Call status:', call.status());
             console.log('[useTwilioCall] Call parameters:', call.parameters);
-            setActiveCall(call);
-            callRef.current = call;
-            setIncomingCall(null);
-            incomingCallRef.current = null;
-            setCallState('connected');
+            
+            // Small delay to ensure audio is fully initialized
+            setTimeout(() => {
+              setActiveCall(call);
+              callRef.current = call;
+              setIncomingCall(null);
+              incomingCallRef.current = null;
+              setCallState('connected');
+              setError(null);
+            }, 100);
             // Keep incomingCallFrom populated for the active call display
           });
 
@@ -317,18 +345,22 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
     // Cleanup on unmount
     return () => {
       try {
+        // Only disconnect active calls, don't destroy device if call is active
+        // (device should persist across component remounts)
         if (callRef.current) {
-          callRef.current.disconnect();
+          const callStatus = callRef.current.status();
+          if (callStatus !== 'closed') {
+            console.log('[Twilio] Cleaning up active call on unmount');
+            callRef.current.disconnect();
+          }
           callRef.current = null;
         }
         if (incomingCallRef.current) {
           incomingCallRef.current.reject();
           incomingCallRef.current = null;
         }
-        if (deviceRef.current) {
-          deviceRef.current.destroy();
-          deviceRef.current = null;
-        }
+        // Don't destroy device on cleanup - let it persist
+        // Device will be cleaned up when user logs out or page closes
         if (callChannelRef.current) {
           callChannelRef.current.unsubscribe();
           callChannelRef.current = null;
@@ -479,27 +511,47 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
       callRef.current = call;
       setActiveCall(call);
 
+      // Track if we've already handled disconnect to prevent double handling
+      let isDisconnected = false;
+      let statusCheckInterval: NodeJS.Timeout | null = null;
+
       // Set up call event listeners
       call.on('accept', () => {
         console.log('[useTwilioCall] ✅✅✅ Call ACCEPTED by recipient!');
         console.log('[useTwilioCall] Call status after accept:', call.status());
         console.log('[useTwilioCall] Call parameters:', call.parameters);
         setCallState('connected');
-        setError(null); // Clear any previous errors
+        setError(null);
+        
+        // Clear status check interval once connected
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
       });
 
       // Poll call status to catch when it becomes 'open' (connected)
       // This helps catch the connection even if 'accept' event doesn't fire for outgoing calls
-      const statusCheckInterval = setInterval(() => {
+      statusCheckInterval = setInterval(() => {
         try {
+          if (isDisconnected) {
+            if (statusCheckInterval) {
+              clearInterval(statusCheckInterval);
+              statusCheckInterval = null;
+            }
+            return;
+          }
+
           const status = call.status();
-          console.log('[useTwilioCall] 📊 Polling call status:', status);
           
           if (status === 'open') {
             console.log('[useTwilioCall] ✅ Call status is OPEN (connected)!');
             setCallState('connected');
             setError(null);
-            clearInterval(statusCheckInterval);
+            if (statusCheckInterval) {
+              clearInterval(statusCheckInterval);
+              statusCheckInterval = null;
+            }
           } else if (status === 'ringing' || status === 'pending') {
             setCallState((prevState) => {
               if (prevState !== 'ringing' && prevState !== 'connected') {
@@ -508,29 +560,33 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
               return prevState;
             });
           } else if (status === 'closed') {
-            clearInterval(statusCheckInterval);
+            if (statusCheckInterval) {
+              clearInterval(statusCheckInterval);
+              statusCheckInterval = null;
+            }
           }
         } catch (err: any) {
           console.warn('[useTwilioCall] Error checking call status:', err);
-          // Don't clear interval on error, might be temporary
         }
       }, 500);
 
-      // Clear interval when call ends
-      const cleanupStatusCheck = () => {
-        clearInterval(statusCheckInterval);
-      };
-      
-      call.on('disconnect', cleanupStatusCheck);
-      call.on('cancel', cleanupStatusCheck);
-      call.on('error', cleanupStatusCheck);
-
+      // Single disconnect handler
       call.on('disconnect', () => {
+        if (isDisconnected) return; // Prevent double handling
+        isDisconnected = true;
+
         console.log('[useTwilioCall] 📴 Call DISCONNECTED');
         console.log('[useTwilioCall] Disconnect details:', {
           status: call.status(),
           callSid: call.parameters?.CallSid
         });
+
+        // Clear status check interval
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
+
         setActiveCall(null);
         callRef.current = null;
         setCallState('disconnected');
@@ -538,15 +594,33 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
       });
 
       call.on('cancel', () => {
+        if (isDisconnected) return;
+        isDisconnected = true;
+
         console.log('[useTwilioCall] ⚠️ Call CANCELLED');
+        
+        // Clear status check interval
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
+
         setActiveCall(null);
         callRef.current = null;
         setCallState('idle');
       });
 
       call.on('error', (error: any) => {
+        if (isDisconnected) return; // Don't handle errors if already disconnected
+        
         console.error('[useTwilioCall] ❌❌❌ CALL ERROR EVENT!');
         console.error('[useTwilioCall] Error object:', error);
+        
+        // Clear status check interval
+        if (statusCheckInterval) {
+          clearInterval(statusCheckInterval);
+          statusCheckInterval = null;
+        }
         
         // Safely extract error details
         const errorMessage = error?.message || String(error) || 'Call error occurred';
@@ -563,6 +637,12 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
         if (errorMessage.includes('is not a function') || errorMessage.includes('direction')) {
           console.warn('[useTwilioCall] Ignoring code error:', errorMessage);
           return; // Don't treat code errors as call failures
+        }
+        
+        // Ignore AbortError from audio playback - this is often a side effect, not the actual error
+        if (errorMessage.includes('AbortError') || errorMessage.includes('play() request was interrupted')) {
+          console.warn('[useTwilioCall] Ignoring audio AbortError (likely side effect):', errorMessage);
+          return;
         }
         
         let userFriendlyMessage = 'Call error occurred';
@@ -593,6 +673,7 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
         setCallState('error');
         setActiveCall(null);
         callRef.current = null;
+        isDisconnected = true;
         
         // Reset to idle after showing error
         setTimeout(() => {
@@ -601,18 +682,23 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
         }, 3000);
       });
 
-      // Wait a moment to see if call connects
+      // Initial status check after a short delay
       setTimeout(() => {
+        if (isDisconnected) return;
         const status = call.status();
         console.log('[useTwilioCall] Call status check after 500ms:', status);
         if (status === 'open') {
           console.log('[useTwilioCall] ✅ Call is OPEN (connected)');
           setCallState('connected');
-        } else if (status === 'ringing') {
+          if (statusCheckInterval) {
+            clearInterval(statusCheckInterval);
+            statusCheckInterval = null;
+          }
+        } else if (status === 'ringing' || status === 'pending') {
           console.log('[useTwilioCall] 📞 Call is RINGING');
           setCallState('ringing');
-        } else {
-          console.log('[useTwilioCall] ⚠️ Call status:', status);
+        } else if (status === 'closed') {
+          console.log('[useTwilioCall] ⚠️ Call already closed');
         }
       }, 500);
 

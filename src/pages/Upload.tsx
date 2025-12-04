@@ -33,39 +33,21 @@ interface UploadedFile {
 const Upload = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "MarkIt | Uploads";
   }, []);
 
   useEffect(() => {
-    const initializeUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate('/auth');
-        return;
-      }
-
-      setUserId(session.user.id);
-      await fetchFiles(session.user.id);
-    };
-
-    initializeUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        navigate('/auth');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (user) {
+      fetchFiles(user.id);
+    }
+  }, [user]);
 
   const fetchFiles = async (uid: string) => {
     try {
@@ -116,7 +98,7 @@ const Upload = () => {
   };
 
   const handleFiles = async (fileList: File[]) => {
-    if (!userId) {
+    if (!user) {
       toast({
         title: "Error",
         description: "You must be logged in to upload files",
@@ -132,7 +114,7 @@ const Upload = () => {
         // Upload to storage
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}_${file.name}`;
-        const filePath = `${userId}/${fileName}`;
+        const filePath = `${user.id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
           .from('user-uploads')
@@ -147,7 +129,7 @@ const Upload = () => {
         const { error: dbError } = await supabase
           .from('uploaded_files')
           .insert({
-            clerk_user_id: userId,
+            clerk_user_id: user.id,
             file_name: file.name,
             file_path: filePath,
             file_type: file.type || 'application/octet-stream',
@@ -172,7 +154,7 @@ const Upload = () => {
     }
 
     setUploading(false);
-    if (userId) await fetchFiles(userId);
+    if (user) await fetchFiles(user.id);
   };
 
   const handleDelete = async (file: UploadedFile) => {

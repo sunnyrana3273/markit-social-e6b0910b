@@ -6,121 +6,61 @@ import { Book, ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Auth = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, profile, loading: authLoading } = useAuth();
 
   useEffect(() => {
     document.title = "MarkIt | Sign In";
-    let isMounted = true;
     
-    // Check if user is already logged in and if they need onboarding
-    const checkAuth = async () => {
-      console.log('[Auth] Checking existing session...');
-      
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('[Auth] Session error:', sessionError);
-          return;
-        }
-        
-        if (!session || !isMounted) {
-          console.log('[Auth] No session found');
-          return;
-        }
-
-        console.log('[Auth] Session found, checking username:', { userId: session.user.id });
-        
-        // Check if user has completed onboarding (has username)
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('username')
-          .eq('id', session.user.id)
-          .maybeSingle();
-
-        if (profileError) {
-          console.error('[Auth] Profile error:', profileError);
-          return;
-        }
-
-        if (!isMounted) return;
-
-        if (!profile?.username) {
-          console.log('[Auth] User needs username, redirecting to onboarding');
-          navigate('/onboarding');
-        } else {
-          console.log('[Auth] User has username, redirecting to app');
-          navigate('/app');
-        }
-      } catch (error) {
-        console.error('[Auth] Error in checkAuth:', error);
-      }
-    };
+    console.log('[Auth] useEffect triggered:', { authLoading, hasUser: !!user, hasProfile: !!profile, username: profile?.username });
     
-    checkAuth();
+    if (authLoading) {
+      console.log('[Auth] Still loading, waiting...');
+      return;
+    }
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Auth state changed:', { event, hasSession: !!session });
-      
-      if (!isMounted) return;
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('[Auth] User signed in, checking username');
-        
-        try {
-          // Check if user needs onboarding
-          const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('username')
-            .eq('id', session.user.id)
-            .maybeSingle();
-
-          if (profileError) {
-            console.error('[Auth] Profile error on sign in:', profileError);
-            return;
-          }
-
-          if (!isMounted) return;
-
-          if (!profile?.username) {
-            console.log('[Auth] User needs username, redirecting to onboarding');
-            navigate('/onboarding');
-          } else {
-            console.log('[Auth] User has username, redirecting to app');
-            navigate('/app');
-          }
-        } catch (error) {
-          console.error('[Auth] Error handling sign in:', error);
-        }
-      } else if (event === 'SIGNED_OUT') {
-        console.log('[Auth] User signed out');
+    if (user) {
+      console.log('[Auth] User exists, checking profile...');
+      if (!profile?.username) {
+        console.log('[Auth] No username, redirecting to onboarding');
+        navigate('/onboarding', { replace: true });
+      } else {
+        console.log('[Auth] Username exists, redirecting to app');
+        navigate('/app', { replace: true });
       }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
+    } else {
+      console.log('[Auth] No user, staying on auth page');
+    }
+  }, [user, profile, authLoading, navigate]);
 
   const handleGoogleAuth = async () => {
+    console.log('[Auth] Starting Google OAuth...');
     setIsGoogleLoading(true);
     
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/onboarding`
         }
       });
 
-      if (error) throw error;
+      console.log('[Auth] OAuth response:', { data, error: error?.message });
+      
+      if (error) {
+        console.error('[Auth] OAuth error:', error);
+        throw error;
+      }
+      
+      // Note: OAuth redirects away, so this code may not execute
+      console.log('[Auth] OAuth initiated successfully');
     } catch (error: any) {
+      console.error('[Auth] OAuth exception:', error);
       toast({
         title: "Google Sign-In Error",
         description: error.message,

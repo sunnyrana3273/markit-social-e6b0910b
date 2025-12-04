@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { User, Mail, Calendar, LogOut } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { UserStatsView } from "./UserStatsView";
@@ -22,104 +22,14 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-interface UserProfile {
-  id: string;
-  email: string;
-  first_name: string | null;
-  last_name: string | null;
-  username: string | null;
-  image_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [user, setUser] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, profile, loading, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchUserData();
-    }
-  }, [isOpen]);
-
-  const fetchUserData = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Get current user session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate('/auth');
-        return;
-      }
-
-      setUser(session.user);
-
-      // Get user profile
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching profile:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load profile information",
-          variant: "destructive",
-        });
-      } else if (!profileData) {
-        // No profile exists, create one
-        const { error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: session.user.id,
-            email: session.user.email!,
-            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            last_name: session.user.user_metadata?.last_name || '',
-            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-          });
-
-        if (createError) {
-          console.error('Error creating profile:', createError);
-          toast({
-            title: "Error",
-            description: "Failed to create profile",
-            variant: "destructive",
-          });
-        } else {
-          // Fetch the newly created profile
-          const { data: newProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setProfile(newProfile);
-        }
-      } else {
-        setProfile(profileData);
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load user information",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await signOut();
       navigate('/auth');
       onClose();
     } catch (error) {
@@ -184,7 +94,7 @@ const SettingsModal = ({ isOpen, onClose }: SettingsModalProps) => {
 
           <div className="flex-1 overflow-y-auto mt-4">
             <TabsContent value="account" className="mt-0">
-              {isLoading ? (
+              {loading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 </div>

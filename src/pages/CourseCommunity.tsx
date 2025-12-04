@@ -51,22 +51,15 @@ import {
   X as XIcon,
   Download
 } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { useAuth, type Profile } from "@/contexts/AuthContext";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import SettingsModal from "@/components/SettingsModal";
 import { FileViewer } from "@/components/FileViewer";
 import NotificationDropdown from "@/components/NotificationDropdown";
-
-interface Profile {
-  first_name: string | null;
-  last_name: string | null;
-  image_url: string | null;
-  email: string;
-}
 
 interface Community {
   id: string;
@@ -126,9 +119,9 @@ interface ActiveUser {
 const CourseCommunity = () => {
   const navigate = useNavigate();
   const { communityId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { user, profile } = useAuth();
   const [community, setCommunity] = useState<Community | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMember, setIsMember] = useState(false);
@@ -179,49 +172,6 @@ const CourseCommunity = () => {
 
   useEffect(() => {
     document.title = "MarkIt | Community";
-    const initializeUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate('/auth');
-        return;
-      }
-
-      setUser(session.user);
-
-      const { data: profileData, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (!profileData && !error) {
-        // No credentials exists, create one
-        const { error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: session.user.id,
-            email: session.user.email!,
-            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            last_name: session.user.user_metadata?.last_name || '',
-            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-          });
-
-        if (!createError) {
-          // Fetch the newly created profile
-          const { data: newProfile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          setProfile(newProfile);
-        }
-      } else if (profileData) {
-        setProfile(profileData);
-      }
-    };
-
-    initializeUser();
   }, [navigate]);
 
   // Refactored function to fetch discussions and related data
@@ -372,15 +322,15 @@ const CourseCommunity = () => {
       // Fetch community and membership in parallel (they're independent)
       const [communityResult, membershipResult] = await Promise.all([
         supabase
-          .from('course_communities')
-          .select('*')
-          .eq('id', communityId)
+        .from('course_communities')
+        .select('*')
+        .eq('id', communityId)
           .single(),
         supabase
-          .from('community_memberships')
-          .select('*')
-          .eq('community_id', communityId)
-          .eq('user_id', user.id)
+        .from('community_memberships')
+        .select('*')
+        .eq('community_id', communityId)
+        .eq('user_id', user.id)
           .maybeSingle()
       ]);
 
@@ -426,8 +376,8 @@ const CourseCommunity = () => {
             // Don't initialize to 0 - only set when we have actual data
             Promise.all([
               supabase
-                .from('community_discussion_replies')
-                .select('discussion_id')
+              .from('community_discussion_replies')
+              .select('discussion_id')
                 .in('discussion_id', discussionIds),
               user ? supabase
                 .from('community_discussion_votes')
@@ -442,13 +392,13 @@ const CourseCommunity = () => {
               if (repliesResult.data) {
                 setReplyCounts((prev) => {
                   const counts = { ...prev };
-                  // Count replies per discussion
+            // Count replies per discussion
                   const replyCountsByDiscussion: Record<string, number> = {};
                   repliesResult.data.forEach((reply) => {
                     replyCountsByDiscussion[reply.discussion_id] = (replyCountsByDiscussion[reply.discussion_id] || 0) + 1;
                   });
                   // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
-                  discussionIds.forEach(id => {
+            discussionIds.forEach(id => {
                     const newCount = replyCountsByDiscussion[id] || 0;
                     const current = prev[id];
                     if (current === undefined || newCount >= current) {
@@ -463,27 +413,27 @@ const CourseCommunity = () => {
               // Process votes - only set when we have data
               if (votesResult.data && user) {
                 setDiscussionVotes((prev) => {
-                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
+              const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
                   
                   // Initialize all discussions first
-                  discussionIds.forEach(id => {
-                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
-                  });
-                  
+              discussionIds.forEach(id => {
+                votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
+              });
+
                   // Count votes from scratch (don't increment on existing values)
                   votesResult.data.forEach((vote) => {
-                    if (!votes[vote.discussion_id]) {
-                      votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
-                    }
-                    if (vote.vote_type === 'upvote') {
-                      votes[vote.discussion_id].upvotes++;
-                    } else {
-                      votes[vote.discussion_id].downvotes++;
-                    }
-                    if (vote.user_id === user.id) {
-                      votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-                    }
-                  });
+                if (!votes[vote.discussion_id]) {
+                  votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
+                }
+                if (vote.vote_type === 'upvote') {
+                  votes[vote.discussion_id].upvotes++;
+                } else {
+                  votes[vote.discussion_id].downvotes++;
+                }
+                if (vote.user_id === user.id) {
+                  votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+                }
+              });
                   
                   // Preserve existing values for discussions not in this batch (if any)
                   Object.keys(prev).forEach(id => {
@@ -506,7 +456,7 @@ const CourseCommunity = () => {
                     interactionCountsByDiscussion[interaction.discussion_id] = (interactionCountsByDiscussion[interaction.discussion_id] || 0) + 1;
                   });
                   // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
-                  discussionIds.forEach(id => {
+            discussionIds.forEach(id => {
                     const newCount = interactionCountsByDiscussion[id] || 0;
                     const current = prev[id];
                     if (current === undefined || newCount >= current) {
@@ -527,22 +477,22 @@ const CourseCommunity = () => {
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
         Promise.all([
           supabase
-            .from('community_resources')
-            .select(`
-              *,
-              profiles:user_id (first_name, last_name, image_url, email)
-            `)
-            .eq('community_id', communityId)
+          .from('community_resources')
+          .select(`
+            *,
+            profiles:user_id (first_name, last_name, image_url, email)
+          `)
+          .eq('community_id', communityId)
             .order('created_at', { ascending: false }),
           supabase
-            .from('community_presence')
-            .select(`
-              user_id,
-              last_seen,
-              profiles:user_id (first_name, last_name, image_url, email)
-            `)
-            .eq('community_id', communityId)
-            .gte('last_seen', fiveMinutesAgo)
+          .from('community_presence')
+          .select(`
+            user_id,
+            last_seen,
+            profiles:user_id (first_name, last_name, image_url, email)
+          `)
+          .eq('community_id', communityId)
+          .gte('last_seen', fiveMinutesAgo)
             .neq('user_id', user.id)
         ]).then(([resourcesResult, activeUsersResult]) => {
           if (resourcesResult.data) {
@@ -550,7 +500,7 @@ const CourseCommunity = () => {
           }
           if (activeUsersResult.data) {
             setActiveUsers(activeUsersResult.data as any);
-          }
+        }
         });
       }
     };
@@ -947,22 +897,22 @@ const CourseCommunity = () => {
       });
       setIsUploadingDiscussionFile(true);
       try {
-        const { url, error } = await uploadFile(newDiscussionFile);
-        if (error) {
+      const { url, error } = await uploadFile(newDiscussionFile);
+      if (error) {
           console.error('[handleCreateDiscussion] File upload error:', error);
-          setIsUploadingDiscussionFile(false);
-          toast({
-            title: "Error",
-            description: error.message || "Failed to upload file",
-            variant: "destructive"
-          });
-          return;
-        }
-        console.log('[handleCreateDiscussion] File uploaded successfully:', url);
-        attachmentUrl = url;
-        attachmentType = newDiscussionFile.type;
-        attachmentName = newDiscussionFile.name;
         setIsUploadingDiscussionFile(false);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to upload file",
+          variant: "destructive"
+        });
+        return;
+      }
+        console.log('[handleCreateDiscussion] File uploaded successfully:', url);
+      attachmentUrl = url;
+      attachmentType = newDiscussionFile.type;
+      attachmentName = newDiscussionFile.name;
+      setIsUploadingDiscussionFile(false);
       } catch (uploadError) {
         console.error('[handleCreateDiscussion] File upload exception:', uploadError);
         setIsUploadingDiscussionFile(false);
@@ -976,10 +926,10 @@ const CourseCommunity = () => {
     }
 
     const discussionData: any = {
-      community_id: communityId,
-      user_id: user.id,
-      title: newDiscussionTitle,
-      content: newDiscussionContent,
+        community_id: communityId,
+        user_id: user.id,
+        title: newDiscussionTitle,
+        content: newDiscussionContent,
       is_anonymous: newDiscussionAnonymous
     };
 
@@ -1000,11 +950,11 @@ const CourseCommunity = () => {
       const insertResult = await supabase
         .from('community_discussions')
         .insert(discussionData)
-        .select(`
-          *,
-          profiles:user_id (first_name, last_name, image_url, email)
-        `)
-        .single();
+      .select(`
+        *,
+        profiles:user_id (first_name, last_name, image_url, email)
+      `)
+      .single();
       
       console.log('[handleCreateDiscussion] Insert result received:', {
         hasData: !!insertResult.data,
@@ -1015,7 +965,7 @@ const CourseCommunity = () => {
 
       const { data: newDiscussion, error } = insertResult;
 
-      if (error) {
+    if (error) {
         console.error('[handleCreateDiscussion] Database insert error:', error);
         console.error('[handleCreateDiscussion] Error details:', {
           code: error.code,
@@ -1024,11 +974,11 @@ const CourseCommunity = () => {
           hint: error.hint,
           fullError: JSON.stringify(error, null, 2)
         });
-        toast({
-          title: "Error",
+      toast({
+        title: "Error",
           description: error.message || "Failed to create discussion",
-          variant: "destructive"
-        });
+        variant: "destructive"
+      });
         return;
       }
 
@@ -1243,22 +1193,22 @@ const CourseCommunity = () => {
       
       if (!replies[discussionId]) {
         const repliesResult = await supabase
-          .from('community_discussion_replies')
-          .select(`
-            id,
-            discussion_id,
-            user_id,
-            content,
-            created_at,
-            updated_at,
-            is_anonymous,
+        .from('community_discussion_replies')
+        .select(`
+          id,
+          discussion_id,
+          user_id,
+          content,
+          created_at,
+          updated_at,
+          is_anonymous,
             attachment_url,
             attachment_type,
             attachment_name,
-            profiles:user_id (first_name, last_name, image_url, email)
-          `)
-          .eq('discussion_id', discussionId)
-          .order('created_at', { ascending: true });
+          profiles:user_id (first_name, last_name, image_url, email)
+        `)
+        .eq('discussion_id', discussionId)
+        .order('created_at', { ascending: true });
 
         if (repliesResult.data) {
           setReplies(prev => ({ ...prev, [discussionId]: repliesResult.data as any }));
@@ -1288,7 +1238,7 @@ const CourseCommunity = () => {
                     }
                     if (vote.user_id === user.id) {
                       votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-                    }
+      }
                   });
                   setReplyVotes(prev => ({ ...prev, ...votes }));
                 }
@@ -1357,7 +1307,7 @@ const CourseCommunity = () => {
                   }
                   if (vote.user_id === user.id) {
                     votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-                  }
+      }
                 });
                 setReplyVotes(prev => ({ ...prev, ...votes }));
               }
@@ -1728,6 +1678,49 @@ const CourseCommunity = () => {
     }
   };
 
+  // Handle discussion/reply query parameters from notifications
+  useEffect(() => {
+    const discussionId = searchParams.get('discussion');
+    const replyId = searchParams.get('reply');
+    
+    if (discussionId && discussions.length > 0) {
+      // Expand the discussion
+      setExpandedDiscussions(prev => {
+        const newSet = new Set([...prev, discussionId]);
+        expandedDiscussionsRef.current = newSet;
+        return newSet;
+      });
+      
+      // Load replies if not already loaded
+      if (!replies[discussionId] || replies[discussionId].length === 0) {
+        handleDiscussionClick(discussionId);
+      }
+      
+      // Scroll to discussion after a short delay
+      setTimeout(() => {
+        const element = document.getElementById(`discussion-${discussionId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+      
+      // If reply ID is specified, scroll to that reply
+      if (replyId) {
+        setTimeout(() => {
+          const element = document.getElementById(`reply-${replyId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 1000);
+      }
+      
+      // Clear query parameters
+      searchParams.delete('discussion');
+      searchParams.delete('reply');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, discussions, replies, setSearchParams]);
+
   if (!community) {
     return <div>Loading...</div>;
   }
@@ -1759,7 +1752,7 @@ const CourseCommunity = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            <NotificationDropdown user={user} profile={profile} />
+            <NotificationDropdown />
             <Button 
               variant="ghost" 
               size="icon" 

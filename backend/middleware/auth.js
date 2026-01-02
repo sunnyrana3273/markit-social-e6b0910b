@@ -17,7 +17,6 @@ if (!SUPABASE_SERVICE_KEY) {
   console.error('❌ ERROR: SUPABASE_SERVICE_KEY environment variable is required');
   console.error('Please set SUPABASE_SERVICE_KEY in your backend/.env file');
   console.error('Current working directory:', process.cwd());
-  console.error('Looking for .env in:', join(__dirname, '..', '.env'));
   throw new Error('SUPABASE_SERVICE_KEY environment variable is required');
 }
 

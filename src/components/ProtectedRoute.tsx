@@ -129,10 +129,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         // Check if user has a username
         console.log('[ProtectedRoute] Checking username for user:', session.user.id);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:130',message:'Starting username check',data:{userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        
         let timeoutId: NodeJS.Timeout | null = null;
         let queryCompleted = false;
         
@@ -140,9 +136,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         timeoutId = setTimeout(() => {
           if (!queryCompleted) {
             console.warn('[ProtectedRoute] Username check timed out after 3s, allowing access');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:137',message:'Username check timed out',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
             setIsLoading(false);
             isLoadingRef.current = false;
             isCheckingRef.current = false;
@@ -161,15 +154,8 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           queryCompleted = true;
           if (timeoutId) clearTimeout(timeoutId);
 
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:151',message:'Profile query result',data:{hasProfile:!!profile,username:profile?.username,usernameType:typeof profile?.username,error:profileError?.message,errorCode:profileError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-
           if (profileError) {
             console.error('[ProtectedRoute] Error checking username:', profileError);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:158',message:'Profile query error',data:{error:profileError?.message,errorCode:profileError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             // Don't block access if profile check fails - might be a temporary DB issue
             setIsLoading(false);
             isLoadingRef.current = false;
@@ -178,16 +164,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
             hasCheckedRef.current = true;
             return;
           }
-
-          // #region agent log
-          const usernameValue = profile?.username;
-          const usernameType = typeof usernameValue;
-          const usernameLength = usernameValue?.length;
-          const usernameTrimmed = usernameValue?.trim?.();
-          const usernameTrimmedLength = usernameTrimmed?.length;
-          const needsUsernameResult = !usernameValue || usernameTrimmedLength === 0;
-          fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:172',message:'Username check details',data:{hasProfile:!!profile,username:usernameValue,usernameType:usernameType,usernameLength:usernameLength,usernameTrimmed:usernameTrimmed,usernameTrimmedLength:usernameTrimmedLength,needsUsername:needsUsernameResult},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
 
           console.log('[ProtectedRoute] Profile check result:', { 
             hasProfile: !!profile, 
@@ -200,15 +176,9 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           // Check if username exists and is not empty/null
           if (!profile?.username || profile.username.trim().length === 0) {
             console.log('[ProtectedRoute] User needs username (missing or empty), setting needsUsername=true');
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:183',message:'Setting needsUsername=true',data:{username:profile?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             setNeedsUsername(true);
           } else {
             console.log('[ProtectedRoute] User has username:', profile.username);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:188',message:'Setting needsUsername=false',data:{username:profile.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             setNeedsUsername(false);
           }
 

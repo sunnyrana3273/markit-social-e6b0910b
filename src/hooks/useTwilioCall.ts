@@ -3,6 +3,9 @@ import { Device, Call } from '@twilio/voice-sdk';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
+// Backend API URL - uses environment variable in production
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
 export type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'disconnected' | 'error';
 
 export interface UseTwilioCallReturn {
@@ -93,7 +96,7 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
         // Get Twilio access token
         console.log('[useTwilioCall] 🔑 Fetching Twilio access token from backend...');
-        const response = await fetch('http://localhost:3001/api/twilio/token', {
+        const response = await fetch(`${BACKEND_URL}/api/twilio/token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -334,7 +337,7 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
     const handleTokenExpired = async () => {
       try {
-        const response = await fetch('http://localhost:3001/api/twilio/token', {
+        const response = await fetch(`${BACKEND_URL}/api/twilio/token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

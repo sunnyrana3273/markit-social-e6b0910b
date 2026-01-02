@@ -3,6 +3,8 @@ import express from 'express';
 import multer from 'multer';
 import OpenAI from 'openai';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
@@ -25,11 +27,101 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isProduction = process.env.NODE_ENV === 'production';
 
-// Middleware
-app.use(cors());
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ limit: '25mb', extended: true })); // This handles Twilio's form-encoded POST requests
+// Trust proxy - Required for Render and other proxied environments
+// This ensures req.ip and secure cookies work correctly
+app.set('trust proxy', 1);
+
+// ============================
+// Security Middleware
+// ============================
+
+// Helmet - Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for now, configure properly for production
+  crossOriginEmbedderPolicy: false,
+}));
+
+// CORS - Configure allowed origins
+// In production, use FRONTEND_ORIGIN env var; in development, allow localhost
+const allowedOrigins = isProduction
+  ? [process.env.FRONTEND_ORIGIN].filter(Boolean) // Only production origin
+  : [
+      process.env.FRONTEND_ORIGIN,
+      process.env.FRONTEND_URL,
+      'http://localhost:8080',
+      'http://localhost:5173', // Vite default
+      'http://localhost:3000',
+    ].filter(Boolean);
+
+// Warn if FRONTEND_ORIGIN is not set in production
+if (isProduction && !process.env.FRONTEND_ORIGIN) {
+  console.error('❌ WARNING: FRONTEND_ORIGIN environment variable is not set in production!');
+  console.error('CORS will reject all cross-origin requests.');
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, curl, etc.)
+    // In production, be more strict about this
+    if (!origin) {
+      return callback(null, !isProduction);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    console.warn(`CORS blocked request from origin: ${origin}`);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'stripe-signature']
+}));
+
+// Rate Limiting - General
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isProduction ? 100 : 1000, // Limit each IP (more lenient in dev)
+  message: { success: false, error: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/api/health', // Don't limit health checks
+});
+
+// Rate Limiting - Strict for expensive operations (AI, payments)
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: isProduction ? 10 : 100, // 10 requests per minute in production
+  message: { success: false, error: 'Rate limit exceeded. Please wait before trying again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate Limiting - Auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isProduction ? 20 : 100, // 20 attempts per 15 minutes
+  message: { success: false, error: 'Too many authentication attempts. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply general rate limiter to all routes
+app.use(generalLimiter);
+
+// Body parsing middleware
+// IMPORTANT: Skip express.json() for Stripe webhook route - it needs the raw body for signature verification
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/webhooks/stripe') {
+    next(); // Skip JSON parsing for webhook route
+  } else {
+    express.json({ limit: '10mb' })(req, res, next);
+  }
+});
+app.use(express.urlencoded({ limit: '10mb', extended: true })); // This handles Twilio's form-encoded POST requests
 
 // Initialize OpenAI - API key from environment variable
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -130,7 +222,7 @@ if (!fs.existsSync(uploadsDir)) {
  * Body: FormData with 'image' file and optional 'prompt' text
  * Headers: Authorization: Bearer <token>
  */
-app.post('/api/process-image', requireUser(), upload.single('image'), async (req, res) => {
+app.post('/api/process-image', strictLimiter, requireUser(), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No image file provided' });
@@ -219,7 +311,7 @@ app.post('/api/process-image', requireUser(), upload.single('image'), async (req
  * Body: FormData with 'image' file
  * Headers: Authorization: Bearer <token>
  */
-app.post('/api/analyze-whiteboard', requireUser(), upload.single('image'), async (req, res) => {
+app.post('/api/analyze-whiteboard', strictLimiter, requireUser(), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No image file provided' });
@@ -435,7 +527,7 @@ app.post('/api/extract-text', requireUser(), upload.single('image'), async (req,
  * Body: JSON with 'image' (base64) and 'instructions'
  * Headers: Authorization: Bearer <token>
  */
-app.post('/api/generate-question', requireUser(), async (req, res) => {
+app.post('/api/generate-question', strictLimiter, requireUser(), async (req, res) => {
   try {
     const user = req.user;
     const { image, instructions, context } = req.body;
@@ -635,7 +727,7 @@ app.post('/api/generate-question', requireUser(), async (req, res) => {
  * Body: JSON { content: string, instructions?: string }
  * Headers: Authorization: Bearer <token>
  */
-app.post('/api/rewrite-steps', requireUser(), async (req, res) => {
+app.post('/api/rewrite-steps', strictLimiter, requireUser(), async (req, res) => {
   try {
     const user = req.user;
     const { content, instructions } = req.body || {};
@@ -1247,7 +1339,7 @@ function extractTopics(analysis) {
  * POST /api/create-checkout-session
  * Body: { plan: 'plus' | 'pro' }
  */
-app.post('/api/create-checkout-session', requireUser(), async (req, res) => {
+app.post('/api/create-checkout-session', strictLimiter, requireUser(), async (req, res) => {
   if (!stripe) {
     return res.status(500).json({ error: 'Stripe not configured' });
   }
@@ -1688,10 +1780,78 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
   }
 });
 
+// ============================
+// Global Error Handler
+// ============================
+// This should be the last middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  
+  // Don't expose internal error details in production
+  const errorResponse = {
+    success: false,
+    error: isProduction ? 'Internal server error' : err.message,
+  };
+  
+  // Add stack trace only in development
+  if (!isProduction) {
+    errorResponse.stack = err.stack;
+  }
+  
+  res.status(err.status || 500).json(errorResponse);
+});
+
+// ============================
+// 404 Handler
+// ============================
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found'
+  });
+});
+
+// ============================
+// Process Error Handlers
+// ============================
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // In production, you might want to send this to an error tracking service
+  // Don't exit the process - let it continue running
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // In production, you might want to send this to an error tracking service
+  // For uncaught exceptions, it's generally recommended to exit and let the process manager restart
+  if (isProduction) {
+    console.error('Process will exit due to uncaught exception in production');
+    process.exit(1);
+  }
+});
+
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('📴 SIGTERM received. Shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('📴 SIGINT received. Shutting down gracefully...');
+  process.exit(0);
+});
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 MarkIt backend server running on http://localhost:${PORT}`);
+  console.log(`🚀 MarkIt backend server running on port ${PORT}`);
   console.log(`📁 Upload directory: ${uploadsDir}`);
+  console.log(`🔒 Security middleware enabled: helmet, cors, rate-limiting`);
+  console.log(`🌍 Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  if (isProduction) {
+    console.log(`🌐 Frontend origin: ${process.env.FRONTEND_ORIGIN || 'NOT SET!'}`);
+  }
 });
 
 export default app;

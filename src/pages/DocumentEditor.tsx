@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Excalidraw } from "@excalidraw/excalidraw";
 import { exportToCanvas } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
+import DOMPurify from 'dompurify';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus, Phone, BotMessageSquare, Save, Eraser, Pencil, FileText } from 'lucide-react';
@@ -26,6 +27,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// Backend API URL - uses environment variable in production
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 // Component to render text with LaTeX math support
 interface MathTextProps {
@@ -209,7 +213,7 @@ export const MathText: React.FC<MathTextProps> = ({ text, className = '' }) => {
                 <div 
                   key={`para-${globalKeyCounter++}`} 
                   className="mb-1.5 leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: processedText }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processedText) }}
                 />
               );
             } else {
@@ -2026,7 +2030,7 @@ const DocumentEditor: React.FC = () => {
       abortControllerRef.current = abortController;
       
       // Send to backend
-      const apiResponse = await fetch('http://localhost:3001/api/analyze-whiteboard', {
+      const apiResponse = await fetch(`${BACKEND_URL}/api/analyze-whiteboard`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${session.access_token}`
@@ -2255,7 +2259,7 @@ const DocumentEditor: React.FC = () => {
       'Keep explanatory text concise but complete.'
     ].join(' ');
     try {
-      const resp = await fetch('http://localhost:3001/api/rewrite-steps', {
+      const resp = await fetch(`${BACKEND_URL}/api/rewrite-steps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: messageContent, instructions: baseInstructions })
@@ -2393,7 +2397,7 @@ const DocumentEditor: React.FC = () => {
       let dataURL = makeDataUrl(1400, 0.8);
       const lastAssistant = [...chatMessages].reverse().find(m => m.role === 'assistant')?.content || '';
 
-      let resp = await fetch('http://localhost:3001/api/generate-question', {
+      let resp = await fetch(`${BACKEND_URL}/api/generate-question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2408,7 +2412,7 @@ const DocumentEditor: React.FC = () => {
       if (resp.status === 413) {
         console.warn('[generate-question] 413 received, retrying with smaller payload');
         dataURL = makeDataUrl(900, 0.65);
-        resp = await fetch('http://localhost:3001/api/generate-question', {
+        resp = await fetch(`${BACKEND_URL}/api/generate-question`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

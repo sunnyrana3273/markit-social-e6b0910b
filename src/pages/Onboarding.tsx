@@ -74,12 +74,6 @@ const Onboarding = () => {
       console.log('[Onboarding] Session found:', { userId: session.user.id });
       setUserId(session.user.id);
 
-      // #region agent log
-      const logData1 = {location:'Onboarding.tsx:78',message:'Starting profile check',data:{userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'};
-      console.log('[DEBUG LOG] Starting profile check', logData1);
-      fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData1)}).catch((err)=>{console.error('[DEBUG LOG ERROR]', err);});
-      // #endregion
-
       // Check if user already has username set - retry a few times in case profile hasn't been created yet
       let profile = null;
       let profileError = null;
@@ -95,12 +89,6 @@ const Onboarding = () => {
         
         profile = result.data || null;
         profileError = result.error || null;
-
-        // #region agent log
-        const logData2 = {location:'Onboarding.tsx:100',message:'Profile query result',data:{retry:profileRetries,hasProfile:!!profile,username:profile?.username,usernameType:typeof profile?.username,error:profileError?.message,errorCode:profileError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'};
-        console.log('[DEBUG LOG] Profile query result', logData2);
-        fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData2)}).catch((err)=>{console.error('[DEBUG LOG ERROR]', err);});
-        // #endregion
         
         if (profileError && profileError.code !== 'PGRST116' && profileRetries < maxProfileRetries - 1) {
           // PGRST116 means no rows returned, which is fine - profile might not exist yet
@@ -114,24 +102,8 @@ const Onboarding = () => {
 
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('[Onboarding] Error checking profile after retries:', profileError);
-        console.error('[Onboarding] Profile error details:', JSON.stringify(profileError, null, 2));
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Onboarding.tsx:106',message:'Profile query error after retries',data:{error:profileError?.message,errorCode:profileError?.code,errorDetails:JSON.stringify(profileError)},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         // Continue with onboarding if there's an error - user can still set username
       }
-
-      // #region agent log
-      const usernameValue = profile?.username;
-      const usernameType = typeof usernameValue;
-      const usernameLength = usernameValue?.length;
-      const usernameTrimmed = usernameValue?.trim?.();
-      const usernameTrimmedLength = usernameTrimmed?.length;
-      const checkResult = usernameValue && typeof usernameValue === 'string' && usernameValue.trim().length > 0;
-      const logData3 = {location:'Onboarding.tsx:127',message:'Username check details',data:{hasProfile:!!profile,username:usernameValue,usernameType:usernameType,usernameLength:usernameLength,usernameTrimmed:usernameTrimmed,usernameTrimmedLength:usernameTrimmedLength,checkResult:checkResult},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'};
-      console.log('[DEBUG LOG] Username check details', logData3);
-      fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData3)}).catch((err)=>{console.error('[DEBUG LOG ERROR]', err);});
-      // #endregion
 
       console.log('[Onboarding] Profile check result:', { 
         hasProfile: !!profile, 
@@ -145,20 +117,10 @@ const Onboarding = () => {
       // Check if username exists and is not empty/null
       if (profile?.username && typeof profile.username === 'string' && profile.username.trim().length > 0) {
         console.log('[Onboarding] User already has username:', profile.username, '- redirecting to app');
-        // #region agent log
-        const logData4 = {location:'Onboarding.tsx:147',message:'Redirecting to app - username exists',data:{username:profile.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'};
-        console.log('[DEBUG LOG] Redirecting to app - username exists', logData4);
-        fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData4)}).catch((err)=>{console.error('[DEBUG LOG ERROR]', err);});
-        // #endregion
         navigate('/app', { replace: true });
         return;
       }
       
-      // #region agent log
-      const logData5 = {location:'Onboarding.tsx:153',message:'Continuing onboarding - no username',data:{hasProfile:!!profile,username:profile?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'};
-      console.log('[DEBUG LOG] Continuing onboarding - no username', logData5);
-      fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData5)}).catch((err)=>{console.error('[DEBUG LOG ERROR]', err);});
-      // #endregion
       console.log('[Onboarding] User needs username (username is missing or empty), continuing onboarding');
 
       // Fetch available communities

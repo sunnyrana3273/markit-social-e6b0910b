@@ -4,12 +4,18 @@ import type { Database } from './types';
 
 // Use environment variables for Supabase configuration
 // In Vite, environment variables must be prefixed with VITE_
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://wvspwskluqkqeniwtoqf.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2c3B3c2tsdXFrcWVuaXd0b3FmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMTMxMjksImV4cCI6MjA2ODg4OTEyOX0.JzU-bMUQM8K-MFER4c2Fybuo_orgSUAzeGSHnzCjeFU";
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Warn if using fallback (for development only)
-if (!import.meta.env.VITE_SUPABASE_ANON_KEY) {
-  console.warn('⚠️  Using hardcoded Supabase key. Set VITE_SUPABASE_ANON_KEY in .env for production.');
+// Validate environment variables are set
+if (!SUPABASE_URL) {
+  console.error('❌ VITE_SUPABASE_URL environment variable is required');
+  console.error('Please create a .env file in the project root with VITE_SUPABASE_URL=your_supabase_url');
+}
+
+if (!SUPABASE_PUBLISHABLE_KEY) {
+  console.error('❌ VITE_SUPABASE_ANON_KEY environment variable is required');
+  console.error('Please create a .env file in the project root with VITE_SUPABASE_ANON_KEY=your_anon_key');
 }
 
 // Import the supabase client like this:

@@ -237,6 +237,45 @@ All colors MUST be HSL for proper theming.
     animation: slide-up 0.5s ease-out;
   }
 
+  /* Cursive writing animation */
+  @keyframes cursive-write {
+    0% {
+      clip-path: polygon(0 0, 0 0, 0 100%, 0 100%);
+      opacity: 0.3;
+    }
+    10% {
+      opacity: 1;
+    }
+    100% {
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+      opacity: 1;
+    }
+  }
+
+  .animate-cursive-write {
+    animation: cursive-write 2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    display: inline-block;
+    animation-delay: 0.3s;
+    opacity: 0;
+  }
+
+  /* Infinite scroll animation for carousel */
+  @keyframes scroll {
+    0% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(calc(-200px * 4 - 4rem * 3));
+    }
+  }
+
+  .animate-scroll {
+    animation: scroll 15s linear infinite;
+    display: flex;
+    width: fit-content;
+    will-change: transform;
+  }
+
   /* Shine effect for special buttons - reduced intensity */
   .shine-button {
     position: relative;
@@ -339,6 +378,14 @@ All colors MUST be HSL for proper theming.
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--accent-hover));
   }
+}
+
+/* Token Log Dialog - Ensure it appears above chat sidebar (z-100) */
+[data-radix-dialog-overlay] {
+  z-index: 9999 !important;
+}
+[data-radix-dialog-content] {
+  z-index: 9999 !important;
 }
 
 /* Excalidraw customizations */

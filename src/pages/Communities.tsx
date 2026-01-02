@@ -13,14 +13,30 @@ import {
   Settings,
   Book,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trophy
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { User } from "@supabase/supabase-js";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import { usePostEngagement } from "@/hooks/usePostEngagement";
+import { useJoinedCommunities } from "@/hooks/useJoinedCommunities";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
+import ReportIssueFooter from "@/components/ReportIssueFooter";
 
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'plus' | 'pro';
+  plan_expires_at?: string | null;
+}
 
 interface JoinedCommunity {
   id: string;
@@ -35,94 +51,154 @@ interface JoinedCommunity {
 
 const Communities = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [joinedCommunities, setJoinedCommunities] = useState<JoinedCommunity[]>([]);
-  const [isCommunitiesMinimized, setIsCommunitiesMinimized] = useState(false);
+  const [isCommunitiesMinimized, setIsCommunitiesMinimized] = useState(() => {
+    // Load minimized state from localStorage
+    const saved = localStorage.getItem('browse_communities_minimized');
+    return saved === 'true';
+  });
   const [isMyCommunitiesMinimized, setIsMyCommunitiesMinimized] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
 
+  // Use React Query to fetch and cache joined communities
+  const { data: joinedCommunitiesData = [], isLoading: isLoadingCommunities } = useJoinedCommunities(user?.id || null);
+
+  // Sort by visit history (from localStorage) - this is client-side only, so we do it after fetching
+  const joinedCommunities = useMemo(() => {
+    if (!user || joinedCommunitiesData.length === 0) return [];
+    
+    const visitKey = `community_visits_${user.id}`;
+    const visits = JSON.parse(localStorage.getItem(visitKey) || '{}');
+    
+    // Sort by last visited time (most recent first)
+    return [...joinedCommunitiesData].sort((a, b) => {
+      const aVisitTime = visits[a.course_communities.id];
+      const bVisitTime = visits[b.course_communities.id];
+      
+      // If both have visit times, sort by most recent
+      if (aVisitTime && bVisitTime) {
+        return new Date(bVisitTime).getTime() - new Date(aVisitTime).getTime();
+      }
+      // If only one has visit time, prioritize it
+      if (aVisitTime && !bVisitTime) return -1;
+      if (!aVisitTime && bVisitTime) return 1;
+      // If neither has visit time, keep original order
+      return 0;
+    });
+  }, [joinedCommunitiesData, user]);
+
+  // Initialize post engagement checker
+  usePostEngagement(user);
+
   useEffect(() => {
     document.title = "MarkIt | Communities";
-    
-    console.log('[Communities] useEffect triggered:', {
-      hasUser: !!user,
-      userId: user?.id,
-      timestamp: new Date().toISOString()
-    });
-    
-    if (!user?.id) {
-      console.log('[Communities] No user ID, skipping fetch');
-      return;
-    }
-
-    console.log('[Communities] Starting fetchJoinedCommunities for user:', user.id);
-    // Fetch joined communities
-    const fetchJoinedCommunities = async () => {
-      const userId = user.id;
+    const initializeUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       
-      const { data: joinedData, error } = await supabase
-        .from('community_memberships')
-        .select(`
-          id,
-          joined_at,
-          course_communities:community_id (
-            id,
-            course_name,
-            course_category,
-            description
-          )
-        `)
-        .eq('user_id', userId)
-        .order('joined_at', { ascending: false });
-
-      if (error) {
-        console.error('[Communities] Error fetching joined communities:', {
-          error,
-          userId,
-          timestamp: new Date().toISOString()
-        });
+      if (!session) {
+        navigate('/auth');
         return;
       }
 
-      console.log('[Communities] Joined communities fetched:', {
-        count: joinedData?.length || 0,
-        userId,
-        timestamp: new Date().toISOString()
-      });
+      setUser(session.user);
 
-      if (joinedData) {
-        // Get visit history from localStorage
-        const visitKey = `community_visits_${userId}`;
-        const visits = JSON.parse(localStorage.getItem(visitKey) || '{}');
-        
-        // Sort by last visited time (most recent first)
-        const sortedData = [...joinedData].sort((a, b) => {
-          const aVisitTime = visits[a.course_communities.id];
-          const bVisitTime = visits[b.course_communities.id];
-          
-          // If both have visit times, sort by most recent
-          if (aVisitTime && bVisitTime) {
-            return new Date(bVisitTime).getTime() - new Date(aVisitTime).getTime();
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!profileData && !error) {
+        // No profile exists, create one
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email!,
+            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            last_name: session.user.user_metadata?.last_name || '',
+            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+          });
+
+        if (!createError) {
+          // Fetch the newly created profile
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          setProfile(newProfile);
+        }
+      } else if (profileData) {
+        setProfile(profileData);
+      }
+
+      // Joined communities are now fetched via React Query hook
+    };
+
+    initializeUser();
+  }, [navigate]);
+
+  // Presence tracking - mark user as online when viewing communities
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+    let channel: RealtimeChannel | null = null;
+
+    const setup = async () => {
+      try {
+        channel = supabase.channel('user-presence', {
+          config: { presence: { key: user.id } },
+        });
+
+        const trackStatus = async (status: 'online' | 'offline') => {
+          try {
+            await channel?.track({ status, updatedAt: new Date().toISOString() });
+          } catch (error) {
+            console.warn('[Communities] Failed to track presence', error);
           }
-          // If only one has visit time, prioritize it
-          if (aVisitTime && !bVisitTime) return -1;
-          if (!aVisitTime && bVisitTime) return 1;
-          // If neither has visit time, keep original order
-          return 0;
+        };
+
+        channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+            await trackStatus('online');
+          }
         });
-        
-        console.log('[Communities] Setting joined communities:', {
-          count: sortedData.length,
-          timestamp: new Date().toISOString()
-        });
-        setJoinedCommunities(sortedData as JoinedCommunity[]);
+
+        const handleBeforeUnload = () => {
+          void trackStatus('offline');
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+          window.removeEventListener('beforeunload', handleBeforeUnload);
+          void trackStatus('offline');
+        };
+      } catch (error) {
+        console.warn('[Communities] Failed to setup presence tracking', error);
       }
     };
 
-    fetchJoinedCommunities();
-  }, [user?.id]);
+    let teardown: (() => void) | void;
+    setup().then((cleanup) => {
+      teardown = cleanup;
+    });
+
+    return () => {
+      cancelled = true;
+      if (typeof teardown === 'function') {
+        teardown();
+      }
+      channel?.unsubscribe();
+      channel = null;
+    };
+  }, [user]);
 
   const [communities, setCommunities] = useState<Array<{id: string, course_name: string, course_category: string}>>([]);
 
@@ -231,7 +307,7 @@ const Communities = () => {
               <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
             </Link>
             
-            <nav className="hidden md:flex items-center gap-4">
+            <nav className="hidden md:flex items-center gap-2">
               <Link to="/app">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Dashboard</Button>
               </Link>
@@ -241,11 +317,16 @@ const Communities = () => {
               <Link to="/friends">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Friends</Button>
               </Link>
+              <Link to="/app/rewards">
+                <Button variant="ghost" className="text-home-foreground hover:bg-gradient-to-r hover:from-purple-500/20 hover:to-pink-500/20 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 hover:border-purple-500/50 transition-all duration-300">
+                  <Trophy className="w-5 h-5" />
+                </Button>
+              </Link>
             </nav>
           </div>
           
-          <div className="flex items-center gap-3">
-            <NotificationDropdown />
+          <div className="flex items-center gap-2">
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 
@@ -270,7 +351,7 @@ const Communities = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-home-foreground">Communities</h1>
-                <p className="text-gray-600 dark:text-gray-400">Connect with fellow learners and join study groups</p>
+                <p className="text-gray-600 dark:text-gray-400">Connect with fellow learners and join community discussions</p>
               </div>
             </div>
 
@@ -401,7 +482,12 @@ const Communities = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setIsCommunitiesMinimized(!isCommunitiesMinimized)}
+                  onClick={() => {
+                    const newState = !isCommunitiesMinimized;
+                    setIsCommunitiesMinimized(newState);
+                    // Save minimized state to localStorage
+                    localStorage.setItem('browse_communities_minimized', String(newState));
+                  }}
                   className="text-home-foreground hover:bg-home-surface dark:hover:bg-accent"
                 >
                   {isCommunitiesMinimized ? (
@@ -455,6 +541,7 @@ const Communities = () => {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
       />
+      <ReportIssueFooter />
     </div>
   );
 };

@@ -10,3 +10,5 @@ ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false;
 COMMENT ON COLUMN public.community_discussions.is_anonymous IS 'Whether the discussion was posted anonymously';
 COMMENT ON COLUMN public.community_discussion_replies.is_anonymous IS 'Whether the reply was posted anonymously';
 
+    
+

@@ -664,6 +664,9 @@ export type Database = {
           last_name: string | null
           updated_at: string
           username: string | null
+          role: string
+          plan: string
+          plan_expires_at: string | null
         }
         Insert: {
           created_at?: string
@@ -674,6 +677,9 @@ export type Database = {
           last_name?: string | null
           updated_at?: string
           username?: string | null
+          role?: string
+          plan?: string
+          plan_expires_at?: string | null
         }
         Update: {
           created_at?: string
@@ -684,6 +690,9 @@ export type Database = {
           last_name?: string | null
           updated_at?: string
           username?: string | null
+          role?: string
+          plan?: string
+          plan_expires_at?: string | null
         }
         Relationships: []
       }
@@ -1048,6 +1057,33 @@ export type Database = {
           file_type?: string
           id?: string
           mode?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      api_usage: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          query_count: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date: string
+          query_count?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          query_count?: number
+          created_at?: string
           updated_at?: string
         }
         Relationships: []

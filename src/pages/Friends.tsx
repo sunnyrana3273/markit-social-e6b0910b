@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -33,7 +34,8 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  Loader2
+  Loader2,
+  Phone
 } from "lucide-react";
 import { 
   DropdownMenu,
@@ -41,16 +43,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import SettingsModal from "@/components/SettingsModal";
 import { FriendChat } from "@/components/FriendChat";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import { useCall } from "@/contexts/CallContext";
+import { useFriendProfiles } from "@/hooks/useFriendProfiles";
+import { useQueryClient } from "@tanstack/react-query";
+import ReportIssueFooter from "@/components/ReportIssueFooter";
+import { UserProfileModal } from "@/components/UserProfileModal";
+
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'plus' | 'pro';
+  plan_expires_at?: string | null;
+}
 
 interface FriendWithMetrics {
   friend_id: string;
@@ -60,6 +83,9 @@ interface FriendWithMetrics {
     last_name: string | null;
     image_url: string | null;
     email: string;
+    role?: 'user' | 'admin';
+    plan?: 'free' | 'plus' | 'pro';
+    plan_expires_at?: string | null;
   };
   daily_metrics?: {
     date?: string | null;
@@ -91,10 +117,24 @@ interface SearchedUser {
 }
 
 const Friends = () => {
+  const { initiateCall, callState, isDeviceReady } = useCall();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user, profile } = useAuth();
-  const [friendsWithMetrics, setFriendsWithMetrics] = useState<FriendWithMetrics[]>([]);
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  // Track metrics separately from profiles (profiles are cached, metrics are not)
+  const [friendMetrics, setFriendMetrics] = useState<Record<string, {
+    daily_metrics?: Array<{ date?: string | null; problems_completed: number; minutes_studied: number }>;
+    user_stats?: {
+      lifetime_minutes_studied: number;
+      lifetime_questions_answered: number;
+      longest_streak: number;
+      current_streak: number;
+    };
+  }>>({});
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [userMetrics, setUserMetrics] = useState<{
     daily_metrics?: Array<{ date?: string | null; problems_completed: number; minutes_studied: number }>;
     user_stats?: {
@@ -117,34 +157,49 @@ const Friends = () => {
   const [isFriendRequestsExpanded, setIsFriendRequestsExpanded] = useState(false);
   const [chatFriend, setChatFriend] = useState<{ id: string; name: string } | null>(null);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
-  const initializedUserIdRef = useRef<string | null>(null);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
 
-  const [searchParams] = useSearchParams();
+  // Use React Query to fetch and cache friend profiles
+  const { data: friendProfilesData = [], isLoading: isLoadingProfiles } = useFriendProfiles(user?.id || null);
+
+  // Combine cached profiles with metrics (metrics may be loading)
+  const friendsWithMetrics = useMemo(() => {
+    return friendProfilesData.map(friendData => ({
+      friend_id: friendData.friend_id,
+      profiles: friendData.profile,
+      daily_metrics: friendMetrics[friendData.friend_id]?.daily_metrics || [],
+      user_stats: friendMetrics[friendData.friend_id]?.user_stats
+    }));
+  }, [friendProfilesData, friendMetrics]);
 
   useEffect(() => {
     document.title = "MarkIt | Friends";
     
-    // Check for chat query parameter from notification click
+    // Check if chat was previously closed
+    const chatClosed = localStorage.getItem('friendsChatClosed');
+    if (chatClosed === 'true') {
+      setChatFriend(null);
+    }
+  }, []);
+
+  // Check for chat query parameter and open chat if friend exists
+  useEffect(() => {
     const chatFriendId = searchParams.get('chat');
-    if (chatFriendId) {
-      // Find the friend and open chat
-      const friend = friendsWithMetrics.find(f => f.friend_id === chatFriendId);
+    if (chatFriendId && friendProfilesData.length > 0 && !chatFriend) {
+      const friend = friendProfilesData.find(f => f.friend_id === chatFriendId);
       if (friend) {
-        const friendName = friend.profiles.first_name || friend.profiles.email.split('@')[0];
-        setChatFriend({ id: chatFriendId, name: friendName });
+        const friendName = `${friend.profile.first_name || ''} ${friend.profile.last_name || ''}`.trim() || friend.profile.email;
+        setChatFriend({
+          id: friend.friend_id,
+          name: friendName
+        });
+        // Clear the closed flag when opening via notification
         localStorage.setItem('friendsChatClosed', 'false');
         // Remove query parameter from URL
-        searchParams.delete('chat');
-        navigate(`/friends?${searchParams.toString()}`, { replace: true });
-      }
-    } else {
-      // Check if chat was previously closed
-      const chatClosed = localStorage.getItem('friendsChatClosed');
-      if (chatClosed === 'true') {
-        setChatFriend(null);
+        navigate('/friends', { replace: true });
       }
     }
-  }, [searchParams, friendsWithMetrics, navigate]);
+  }, [searchParams, friendProfilesData, chatFriend, navigate]);
 
   const handleCloseChat = () => {
     setChatFriend(null);
@@ -158,293 +213,259 @@ const Friends = () => {
     localStorage.setItem('friendsChatClosed', 'false');
   };
 
-  // Fetch friends data function (moved outside useEffect for reusability)
-  const fetchFriendsData = async (userId: string) => {
+  // Fetch friends metrics and stats (separate from profiles which are cached)
+  const fetchFriendsMetrics = async (friendProfiles: Array<{ friend_id: string; profile: { id: string; first_name: string | null; last_name: string | null; image_url: string | null; email: string } }>) => {
+    if (friendProfiles.length === 0) {
+      setFriendMetrics({});
+      setIsLoadingMetrics(false);
+      return;
+    }
+
+    setIsLoadingMetrics(true);
     try {
-        const { data: friendsData, error: friendsError } = await supabase
-          .from('friends')
-          .select('user_id, friend_id')
-          .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-          .eq('status', 'accepted');
+      const friendIds = friendProfiles.map(f => f.friend_id);
 
-        if (friendsError) {
-          console.warn('[Friends] Error fetching accepted friends:', friendsError);
-          setFriendsWithMetrics([]);
-          return;
-        }
+      const { data: statsData, error: statsError } = await supabase
+        .from('user_stats')
+        .select('user_id, lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+        .in('user_id', friendIds);
 
-        if (!friendsData || friendsData.length === 0) {
-          setFriendsWithMetrics([]);
-          return;
-        }
+      if (statsError) {
+        console.warn('[Friends] Error fetching user stats:', statsError);
+      }
 
-        const friendIds = Array.from(new Set(friendsData.map(f => 
-          f.user_id === userId ? f.friend_id : f.user_id
-        )));
+      const statsMap = new Map<string, {
+        lifetime_minutes_studied: number;
+        lifetime_questions_answered: number;
+        longest_streak: number;
+        current_streak: number;
+      }>();
 
-        if (friendIds.length === 0) {
-          setFriendsWithMetrics([]);
-          return;
-        }
-
-        const { data: profilesData, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, first_name, last_name, image_url, email')
-          .in('id', friendIds);
-
-        if (profilesError) {
-          console.warn('[Friends] Error fetching friend profiles:', profilesError);
-          return;
-        }
-
-        if (!profilesData || profilesData.length === 0) {
-          setFriendsWithMetrics([]);
-          return;
-        }
-
-        const { data: statsData, error: statsError } = await supabase
-          .from('user_stats')
-          .select('user_id, lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
-          .in('user_id', friendIds);
-
-        if (statsError) {
-          console.warn('[Friends] Error fetching user stats:', statsError);
-        }
-
-        const statsMap = new Map<string, {
-          lifetime_minutes_studied: number;
-          lifetime_questions_answered: number;
-          longest_streak: number;
-          current_streak: number;
-        }>();
-
-        statsData?.forEach((stat) => {
-          statsMap.set(stat.user_id, {
-            lifetime_minutes_studied: stat.lifetime_minutes_studied ?? 0,
-            lifetime_questions_answered: stat.lifetime_questions_answered ?? 0,
-            longest_streak: stat.longest_streak ?? 0,
-            current_streak: stat.current_streak ?? 0,
-          });
+      statsData?.forEach((stat) => {
+        statsMap.set(stat.user_id, {
+          lifetime_minutes_studied: stat.lifetime_minutes_studied ?? 0,
+          lifetime_questions_answered: stat.lifetime_questions_answered ?? 0,
+          longest_streak: stat.longest_streak ?? 0,
+          current_streak: stat.current_streak ?? 0,
         });
+      });
 
-        const friendsWithMetricsData = await Promise.all(
-          profilesData.map(async (profile) => {
-            const { data: metricsData, error: metricsError } = await supabase
-              .from('daily_metrics')
-              .select('date, problems_completed, minutes_studied')
-              .eq('user_id', profile.id)
-              .order('date', { ascending: false })
-              .limit(7);
+      const metricsPromises = friendProfiles.map(async (friendData) => {
+        const { data: metricsData, error: metricsError } = await supabase
+          .from('daily_metrics')
+          .select('date, problems_completed, minutes_studied')
+          .eq('user_id', friendData.friend_id)
+          .order('date', { ascending: false })
+          .limit(7);
 
-            if (metricsError) {
-              console.warn('[Friends] Error fetching metrics for friend', profile.id, metricsError);
-            }
+        if (metricsError) {
+          console.warn('[Friends] Error fetching metrics for friend', friendData.friend_id, metricsError);
+        }
 
-            return {
-              friend_id: profile.id,
-              profiles: profile,
-              daily_metrics: metricsData || [],
-              user_stats: statsMap.get(profile.id)
-            };
-          })
-        );
+        return {
+          friendId: friendData.friend_id,
+          metrics: {
+            daily_metrics: metricsData || [],
+            user_stats: statsMap.get(friendData.friend_id)
+          }
+        };
+      });
 
-      setFriendsWithMetrics(friendsWithMetricsData);
+      const metricsResults = await Promise.all(metricsPromises);
+      
+      // Update metrics state by merging with existing (preserve UI)
+      setFriendMetrics(prev => {
+        const next = { ...prev };
+        metricsResults.forEach(({ friendId, metrics }) => {
+          next[friendId] = metrics;
+        });
+        return next;
+      });
     } catch (error) {
-      console.error('[Friends] Unexpected error fetching friends data:', error);
+      console.error('[Friends] Unexpected error fetching friends metrics:', error);
+    } finally {
+      setIsLoadingMetrics(false);
     }
   };
 
   useEffect(() => {
-    console.log('[Friends] useEffect triggered:', {
-      hasUser: !!user,
-      userId: user?.id,
-      initializedUserId: initializedUserIdRef.current,
-      timestamp: new Date().toISOString()
-    });
-    
-    if (!user?.id) {
-      console.log('[Friends] No user ID, resetting initialized ref');
-      initializedUserIdRef.current = null;
-      return;
-    }
-
-    // Check if already initialized for this user
-    if (initializedUserIdRef.current === user.id) {
-      console.log('[Friends] Already initialized for this user, skipping');
-      return; // Already initialized for this user
-    }
-    
-    console.log('[Friends] Marking as initialized and starting data fetch for user:', user.id);
-    // Mark as initialized for this user
-    initializedUserIdRef.current = user.id;
-
     let friendsInterval: number | undefined;
-    let isMounted = true;
-    const currentUserId = user.id;
 
-    const initializeData = async () => {
-      console.log('[Friends] initializeData called:', {
-        isMounted,
-        hasUser: !!user,
-        userId: user?.id,
-        currentUserId,
-        matches: user?.id === currentUserId,
-        timestamp: new Date().toISOString()
-      });
+    const initializeUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!isMounted || !user || user.id !== currentUserId) {
-        console.log('[Friends] initializeData cancelled:', {
-          isMounted,
-          hasUser: !!user,
-          userId: user?.id,
-          currentUserId
-        });
+      if (!session) {
+        navigate('/auth');
         return;
       }
 
-      try {
-        console.log('[Friends] Starting to fetch user metrics and stats...');
-        // Fetch current user's metrics and stats
-        const { data: userMetricsData, error: userMetricsError } = await supabase
-          .from('daily_metrics')
-          .select('date, problems_completed, minutes_studied')
-          .eq('user_id', user.id)
-          .order('date', { ascending: false })
-          .limit(7);
+      setUser(session.user);
 
-        if (userMetricsError) {
-          console.warn('[Friends] Error fetching user metrics:', userMetricsError);
-        }
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
 
-        const { data: userStatsData, error: userStatsError } = await supabase
-          .from('user_stats')
-          .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        if (userStatsError) {
-          console.warn('[Friends] Error fetching user stats:', userStatsError);
-        }
-
-        if (isMounted && user.id === currentUserId) {
-          setUserMetrics({
-            daily_metrics: userMetricsData || [],
-            user_stats: userStatsData ? {
-              lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
-              lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
-              longest_streak: userStatsData.longest_streak ?? 0,
-              current_streak: userStatsData.current_streak ?? 0,
-            } : undefined,
+      if (!profileData && !error) {
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email!,
+            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            last_name: session.user.user_metadata?.last_name || '',
+            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
           });
-        }
 
-        if (!isMounted || !user || user.id !== currentUserId) {
-          console.log('[Friends] Skipping fetchFriendsData - component unmounted or user changed');
-          return;
-        }
-        
-        console.log('[Friends] Calling fetchFriendsData for user:', user.id);
-        await fetchFriendsData(user.id);
-        console.log('[Friends] fetchFriendsData completed');
-
-        // Fetch incoming friend requests (where current user is the friend_id)
-        const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
-          .from('friends')
-          .select('user_id, created_at')
-          .eq('friend_id', user.id)
-          .eq('status', 'pending');
-
-        if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
-          const userIds = incomingFriendsData.map(req => req.user_id);
-          const { data: incomingProfilesData } = await supabase
+        if (!createError) {
+          const { data: newProfile } = await supabase
             .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .in('id', userIds);
-
-          if (incomingProfilesData && isMounted && user.id === currentUserId) {
-            const incomingRequests = incomingFriendsData.map(friends => {
-              const profile = incomingProfilesData.find(p => p.id === friends.user_id);
-              return { ...friends, profiles: profile };
-            });
-            setIncomingRequests(incomingRequests);
-          }
-        } else if (incomingFriendsError) {
-          console.warn('[Friends] Incoming friend requests error:', incomingFriendsError);
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          setProfile(newProfile);
         }
-
-        if (!isMounted || !user || user.id !== currentUserId) return;
-        // Fetch outgoing friend requests (where current user is the user_id)
-        const { data: outgoingFriendsData, error: outgoingFriendsError } = await supabase
-          .from('friends')
-          .select('friend_id, created_at')
-          .eq('user_id', user.id)
-          .eq('status', 'pending');
-
-        if (outgoingFriendsData && !outgoingFriendsError && outgoingFriendsData.length > 0) {
-          const friendIds = outgoingFriendsData.map(req => req.friend_id);
-          const { data: outgoingProfilesData } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .in('id', friendIds);
-
-          if (outgoingProfilesData && isMounted && user.id === currentUserId) {
-            const outgoingRequests = outgoingFriendsData.map(friends => {
-              const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
-              return { ...friends, profiles: profile };
-            });
-            setOutgoingRequests(outgoingRequests);
-          }
-        }
-      } catch (error) {
-        console.error('[Friends] Error in initializeData:', error);
+      } else if (profileData) {
+        setProfile(profileData);
       }
-    };
 
-    initializeData();
+      // Fetch current user's metrics and stats
+      const { data: userMetricsData, error: userMetricsError } = await supabase
+        .from('daily_metrics')
+        .select('date, problems_completed, minutes_studied')
+        .eq('user_id', session.user.id)
+        .order('date', { ascending: false })
+        .limit(7);
 
-    // Set up interval to refresh data every minute
-    friendsInterval = window.setInterval(async () => {
-      if (!isMounted || !user || user.id !== currentUserId) return;
-      
-      try {
-        await fetchFriendsData(user.id);
+      if (userMetricsError) {
+        console.warn('[Friends] Error fetching user metrics:', userMetricsError);
+      }
+
+      const { data: userStatsData, error: userStatsError } = await supabase
+        .from('user_stats')
+        .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (userStatsError) {
+        console.warn('[Friends] Error fetching user stats:', userStatsError);
+      }
+
+      setUserMetrics({
+        daily_metrics: userMetricsData || [],
+        user_stats: userStatsData ? {
+          lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+          lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+          longest_streak: userStatsData.longest_streak ?? 0,
+          current_streak: userStatsData.current_streak ?? 0,
+        } : undefined,
+      });
+
+      // Friend profiles are now fetched via React Query hook
+      // We'll fetch metrics separately when profiles are loaded
+
+      // Fetch incoming friend requests (where current user is the friend_id)
+      const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
+        .from('friends')
+        .select('user_id, created_at')
+        .eq('friend_id', session.user.id)
+        .eq('status', 'pending');
+
+      if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
+        const userIds = incomingFriendsData.map(req => req.user_id);
+        const { data: incomingProfilesData } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, image_url, email')
+          .in('id', userIds);
+
+        if (incomingProfilesData) {
+          const incomingRequests = incomingFriendsData.map(friends => {
+            const profile = incomingProfilesData.find(p => p.id === friends.user_id);
+            return { ...friends, profiles: profile };
+          });
+          setIncomingRequests(incomingRequests);
+        }
+      } else if (incomingFriendsError) {
+        console.warn('[Friends] Incoming friend requests error:', incomingFriendsError);
+      }
+
+      // Fetch outgoing friend requests (where current user is the user_id)
+      const { data: outgoingFriendsData, error: outgoingFriendsError } = await supabase
+        .from('friends')
+        .select('friend_id, created_at')
+        .eq('user_id', session.user.id)
+        .eq('status', 'pending');
+
+      if (outgoingFriendsData && !outgoingFriendsError && outgoingFriendsData.length > 0) {
+        const friendIds = outgoingFriendsData.map(req => req.friend_id);
+        const { data: outgoingProfilesData } = await supabase
+          .from('profiles')
+          .select('id, username, first_name, last_name, image_url, email')
+          .in('id', friendIds);
+
+        if (outgoingProfilesData) {
+          const outgoingRequests = outgoingFriendsData.map(friends => {
+            const profile = outgoingProfilesData.find(p => p.id === friends.friend_id);
+            return { ...friends, profiles: profile };
+          });
+          setOutgoingRequests(outgoingRequests);
+        }
+      }
+
+      friendsInterval = window.setInterval(async () => {
+        // Invalidate friend profiles cache to trigger refetch
+        queryClient.invalidateQueries({ queryKey: ['friendProfiles', session.user.id] });
         // Refresh user metrics too
         const { data: userMetricsData } = await supabase
           .from('daily_metrics')
           .select('date, problems_completed, minutes_studied')
-          .eq('user_id', user.id)
+          .eq('user_id', session.user.id)
           .order('date', { ascending: false })
           .limit(7);
         const { data: userStatsData } = await supabase
           .from('user_stats')
           .select('lifetime_minutes_studied, lifetime_questions_answered, longest_streak, current_streak')
-          .eq('user_id', user.id)
+          .eq('user_id', session.user.id)
           .maybeSingle();
-        
-        if (isMounted && user.id === currentUserId) {
-          setUserMetrics({
-            daily_metrics: userMetricsData || [],
-            user_stats: userStatsData ? {
-              lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
-              lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
-              longest_streak: userStatsData.longest_streak ?? 0,
-              current_streak: userStatsData.current_streak ?? 0,
-            } : undefined,
-          });
-        }
-      } catch (error) {
-        console.error('[Friends] Error in interval refresh:', error);
+        setUserMetrics({
+          daily_metrics: userMetricsData || [],
+          user_stats: userStatsData ? {
+            lifetime_minutes_studied: userStatsData.lifetime_minutes_studied ?? 0,
+            lifetime_questions_answered: userStatsData.lifetime_questions_answered ?? 0,
+            longest_streak: userStatsData.longest_streak ?? 0,
+            current_streak: userStatsData.current_streak ?? 0,
+          } : undefined,
+        });
+      }, 60000);
+    };
+
+    void initializeUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        navigate('/auth');
+      } else {
+        setUser(session.user);
       }
-    }, 60000);
+    });
 
     return () => {
-      isMounted = false;
+      subscription.unsubscribe();
       if (friendsInterval) {
         window.clearInterval(friendsInterval);
       }
     };
-  }, [user?.id]);
+  }, [navigate, queryClient]);
+
+  // Fetch metrics when friend profiles are loaded or updated
+  useEffect(() => {
+    if (friendProfilesData.length > 0 && user) {
+      fetchFriendsMetrics(friendProfilesData);
+    } else if (friendProfilesData.length === 0 && !isLoadingProfiles) {
+      setFriendMetrics({});
+    }
+  }, [friendProfilesData, user, isLoadingProfiles]);
 
   // Presence tracking (online vs studying)
   useEffect(() => {
@@ -457,6 +478,9 @@ const Friends = () => {
       if (!channel) return;
       const state = channel.presenceState();
       const next: Record<string, { status: string; updatedAt?: string }> = {};
+      const now = Date.now();
+      const PRESENCE_TIMEOUT = 60000; // 60 seconds - consider offline if no update in this time
+      
       Object.entries(state).forEach(([key, sessions]) => {
         const metas = sessions as Array<{ status?: string; updatedAt?: string }>;
         if (!metas?.length) return;
@@ -467,7 +491,14 @@ const Friends = () => {
         });
         const latest = sorted[0];
         if (latest?.status) {
-          next[key] = { status: latest.status, updatedAt: latest.updatedAt };
+          // Check if presence is stale (older than timeout)
+          const updatedAt = latest.updatedAt ? new Date(latest.updatedAt).getTime() : 0;
+          const isStale = now - updatedAt > PRESENCE_TIMEOUT;
+          
+          // Only include if not stale and status is not offline
+          if (!isStale && latest.status !== 'offline') {
+            next[key] = { status: latest.status, updatedAt: latest.updatedAt };
+          }
         }
       });
       setPresenceState(next);
@@ -487,11 +518,16 @@ const Friends = () => {
           }
         };
 
+        // Listen to presence events
         channel.on('presence', { event: 'sync' }, updatePresenceState);
+        channel.on('presence', { event: 'join' }, updatePresenceState);
+        channel.on('presence', { event: 'leave' }, updatePresenceState);
 
         channel.subscribe(async (status) => {
           if (status === 'SUBSCRIBED') {
             await trackStatus('online');
+            // Update presence state after subscription
+            setTimeout(updatePresenceState, 100);
           }
         });
 
@@ -510,6 +546,28 @@ const Friends = () => {
       }
     };
 
+    // Periodic cleanup of stale presence entries
+    const cleanupInterval = setInterval(() => {
+      setPresenceState((prev) => {
+        const now = Date.now();
+        const PRESENCE_TIMEOUT = 60000; // 60 seconds
+        const cleaned: Record<string, { status: string; updatedAt?: string }> = {};
+        
+        Object.entries(prev).forEach(([key, data]) => {
+          if (data.updatedAt) {
+            const updatedTime = new Date(data.updatedAt).getTime();
+            const isStale = now - updatedTime > PRESENCE_TIMEOUT;
+            // Only keep non-stale entries
+            if (!isStale && data.status !== 'offline') {
+              cleaned[key] = data;
+            }
+          }
+        });
+        
+        return cleaned;
+      });
+    }, 30000); // Run cleanup every 30 seconds
+
     let teardown: (() => void) | void;
     setup().then((cleanup) => {
       teardown = cleanup;
@@ -517,6 +575,7 @@ const Friends = () => {
 
     return () => {
       cancelled = true;
+      clearInterval(cleanupInterval);
       if (typeof teardown === 'function') {
         teardown();
       }
@@ -545,23 +604,42 @@ const Friends = () => {
   };
 
   const getFriendStatus = (friend: FriendWithMetrics) => {
-    const presence = presenceState[friend.friend_id]?.status;
-    if (presence === 'studying' || presence === 'online') {
-      return presence as 'studying' | 'online';
-    }
-    if (presence === 'offline') {
-      return 'offline';
+    const presenceData = presenceState[friend.friend_id];
+    const presence = presenceData?.status;
+    const updatedAt = presenceData?.updatedAt;
+    
+    // Check if presence data is stale (older than 60 seconds)
+    if (updatedAt) {
+      const now = Date.now();
+      const updatedTime = new Date(updatedAt).getTime();
+      const isStale = now - updatedTime > 60000; // 60 seconds
+      
+      if (isStale) {
+        // Presence is stale, don't trust it - check metrics instead
+      } else {
+        // Presence is fresh, use it
+        if (presence === 'studying' || presence === 'online') {
+          return presence as 'studying' | 'online';
+        }
+        if (presence === 'offline') {
+          return 'offline';
+        }
+      }
     }
 
+    // If presence is not available or stale, only check for "studying" based on today's activity
+    // Don't fall back to "online" based on recent activity - default to offline instead
     const latestMetric = friend.daily_metrics?.[0] as
       | { date?: string | null; minutes_studied?: number | null }
       | undefined;
+    
+    // Only show "studying" if they have activity TODAY
     if (latestMetric && isToday(latestMetric.date) && (latestMetric.minutes_studied || 0) > 0) {
       return 'studying';
     }
-    if (latestMetric && isRecent(latestMetric.date, 7)) {
-      return 'online';
-    }
+    
+    // Default to offline if presence is not available or stale
+    // This prevents showing "online" based on stale presence data
     return 'offline';
   };
 
@@ -604,7 +682,8 @@ const Friends = () => {
       const lifetimeProblems = friend.user_stats?.lifetime_questions_answered ?? totalProblemsLast7;
       const longestStreak = friend.user_stats?.longest_streak ?? 0;
       const currentStreak = friend.user_stats?.current_streak ?? 0;
-      const score = (lifetimeProblems + lifetimeMinutes) / 2;
+      // Score is based on last 7 days only
+      const score = (totalProblemsLast7 + totalMinutesLast7) / 2;
       
       return {
         id: friend.friend_id,
@@ -630,7 +709,8 @@ const Friends = () => {
       const lifetimeProblems = userMetrics.user_stats?.lifetime_questions_answered ?? totalProblemsLast7;
       const longestStreak = userMetrics.user_stats?.longest_streak ?? 0;
       const currentStreak = userMetrics.user_stats?.current_streak ?? 0;
-      const score = (lifetimeProblems + lifetimeMinutes) / 2;
+      // Score is based on last 7 days only
+      const score = (totalProblemsLast7 + totalMinutesLast7) / 2;
 
       friendsList.push({
         id: user.id,
@@ -846,9 +926,36 @@ const Friends = () => {
         description: "Friend request accepted!"
       });
 
-      // Refresh friends data instead of reloading the page
+      // Invalidate friend profiles cache to trigger refetch and show new friend immediately
       if (user) {
-        await fetchFriendsData(user.id);
+        queryClient.invalidateQueries({ queryKey: ['friendProfiles', user.id] });
+        // Invalidate incoming friend requests to sync with NotificationDropdown
+        queryClient.invalidateQueries({ queryKey: ['incomingFriendRequests', user.id] });
+        
+        // Refetch incoming requests to sync with NotificationDropdown
+        const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
+          .from('friends')
+          .select('user_id, created_at')
+          .eq('friend_id', user.id)
+          .eq('status', 'pending');
+
+        if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
+          const userIds = incomingFriendsData.map(req => req.user_id);
+          const { data: incomingProfilesData } = await supabase
+            .from('profiles')
+            .select('id, username, first_name, last_name, image_url, email')
+            .in('id', userIds);
+
+          if (incomingProfilesData) {
+            const incomingRequests = incomingFriendsData.map(friends => {
+              const profile = incomingProfilesData.find(p => p.id === friends.user_id);
+              return { ...friends, profiles: profile };
+            });
+            setIncomingRequests(incomingRequests);
+          }
+        } else {
+          setIncomingRequests([]);
+        }
       }
     } catch (error: any) {
       console.error('Error accepting friend request:', error);
@@ -956,7 +1063,7 @@ const Friends = () => {
               <span className="text-xl font-bold text-home-foreground ">MarkIt</span>
             </Link>
             
-            <nav className="hidden md:flex items-center gap-4">
+            <nav className="hidden md:flex items-center gap-2">
               <Link to="/app">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Dashboard</Button>
               </Link>
@@ -966,22 +1073,16 @@ const Friends = () => {
               <Link to="/friends">
                 <Button variant="ghost" className="text-home-foreground hover:bg-home-surface bg-home-surface">Friends</Button>
               </Link>
-                            <Button
-                variant="ghost" 
-                className="text-home-foreground hover:bg-home-surface"
-                onClick={() => {
-                  if (typeof window !== 'undefined' && (window as any).testNotification) {
-                    (window as any).testNotification();
-                  }
-                }}
-              >
-                Test Notification
-                            </Button>
+              <Link to="/app/rewards">
+                <Button variant="ghost" className="text-home-foreground hover:bg-gradient-to-r hover:from-purple-500/20 hover:to-pink-500/20 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 hover:border-purple-500/50 transition-all duration-300">
+                  <Trophy className="w-5 h-5" />
+                </Button>
+              </Link>
             </nav>
-                          </div>
+          </div>
           
-          <div className="flex items-center gap-3">
-            <NotificationDropdown />
+          <div className="flex items-center gap-2">
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1180,7 +1281,15 @@ const Friends = () => {
                           </div>
                           
                           {/* Avatar */}
-                          <Avatar className="w-12 h-12 border-2 border-white shadow-md">
+                          <Avatar 
+                            className="w-12 h-12 border-2 border-white shadow-md cursor-pointer hover:ring-2 hover:ring-home-primary/50 transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (friend.id) {
+                                setSelectedProfileUserId(friend.id);
+                              }
+                            }}
+                          >
                             <AvatarImage src={friend.image_url || undefined} />
                             <AvatarFallback className="bg-home-primary text-white font-medium">
                               {friend.initials}
@@ -1189,7 +1298,15 @@ const Friends = () => {
                           
                           {/* Friend Info */}
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-home-foreground text-lg truncate">
+                            <h3 
+                              className="font-bold text-home-foreground text-lg truncate cursor-pointer hover:text-home-primary transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (friend.id) {
+                                  setSelectedProfileUserId(friend.id);
+                                }
+                              }}
+                            >
                               {friend.name}
                               {friend.isCurrentUser && (
                                 <span className="italic text-gray-500 dark:text-gray-400 font-normal"> (you)</span>
@@ -1198,20 +1315,13 @@ const Friends = () => {
                             <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-1">
                               <div className="flex items-center gap-2">
                                 <Brain className="w-3 h-3 text-purple-500" />
-                                <span className="font-semibold text-purple-600 dark:text-purple-400">{friend.lifetimeProblems}</span>
-                                <span className="text-gray-500 dark:text-gray-400">lifetime problems</span>
+                                <span className="font-semibold text-purple-600 dark:text-purple-400">{friend.totalProblemsLast7}</span>
+                                <span className="text-gray-500 dark:text-gray-400">last 7 days problems</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <Clock className="w-3 h-3 text-blue-500" />
-                                <span className="font-semibold text-blue-600 dark:text-blue-400">{friend.lifetimeMinutes}</span>
-                                <span className="text-gray-500 dark:text-gray-400">lifetime mins</span>
-                              </div>
-                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 dark:text-gray-400">
-                                <span>Last 7 days: {friend.totalProblemsLast7} problems</span>
-                                <span>{friend.totalMinutesLast7} mins</span>
-                                {(friend.currentStreak > 0 || friend.longestStreak > 0) && (
-                                  <span>Streaks: {friend.currentStreak} current / {friend.longestStreak} best</span>
-                                )}
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">{friend.totalMinutesLast7}</span>
+                                <span className="text-gray-500 dark:text-gray-400">last 7 days mins</span>
                               </div>
                             </div>
                           </div>
@@ -1275,8 +1385,9 @@ const Friends = () => {
             <Card className="p-6 bg-card border border-border">
               <h2 className="text-xl font-semibold text-home-foreground mb-4">All Friends ({friendsWithMetrics.length})</h2>
               {friendsWithMetrics.length > 0 ? (
-                <div className="grid md:grid-cols-2 gap-4">
-                  {friendsWithMetrics.map((friend) => {
+                <TooltipProvider>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {friendsWithMetrics.map((friend) => {
                     const totalProblems = friend.daily_metrics?.reduce((sum, day) => sum + (day.problems_completed || 0), 0) || 0;
                     const totalMinutes = friend.daily_metrics?.reduce((sum, day) => sum + (day.minutes_studied || 0), 0) || 0;
                     const lifetimeMinutes = friend.user_stats?.lifetime_minutes_studied ?? 0;
@@ -1289,7 +1400,13 @@ const Friends = () => {
                     return (
                       <div key={friend.friend_id} className="p-4 bg-home-surface rounded-lg hover:bg-accent transition-colors">
                         <div className="flex items-start gap-4">
-                          <Avatar className="w-12 h-12">
+                          <Avatar 
+                            className="w-12 h-12 cursor-pointer hover:ring-2 hover:ring-home-primary/50 transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProfileUserId(friend.profiles.id);
+                            }}
+                          >
                             <AvatarImage src={friend.profiles.image_url || undefined} />
                             <AvatarFallback className="bg-home-primary text-white">
                               {getInitials(friend.profiles.first_name, friend.profiles.last_name, friend.profiles.email)}
@@ -1298,55 +1415,152 @@ const Friends = () => {
                           
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-2">
-                              <h3 className="font-medium text-home-foreground truncate">
+                              <h3 
+                                className="font-medium text-home-foreground truncate cursor-pointer hover:text-home-primary transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProfileUserId(friend.profiles.id);
+                                }}
+                              >
                                 {`${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email}
                               </h3>
                               <Badge className={`flex items-center gap-2 ${statusConfig.badge} pointer-events-none`}>
                                 <span className={`w-2 h-2 rounded-full ${statusConfig.dot}`}></span>
                                 {statusConfig.label}
                               </Badge>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="text-home-foreground hover:bg-home-surface"
-                                onClick={() => handleOpenChat({ 
-                                  id: friend.profiles.id, 
-                                  name: `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email
-                                })}
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-home-foreground hover:bg-home-surface"
+                                  onClick={() => handleOpenChat({ 
+                                    id: friend.profiles.id, 
+                                    name: `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email
+                                  })}
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                                {(() => {
+                                  const userPlan = profile?.plan || 'free';
+                                  const isAdmin = profile?.role === 'admin';
+                                  // Check if plan has expired
+                                  let effectivePlan = userPlan;
+                                  if (profile?.plan_expires_at && userPlan !== 'free') {
+                                    const expiresAt = new Date(profile.plan_expires_at);
+                                    const now = new Date();
+                                    if (expiresAt < now) {
+                                      effectivePlan = 'free';
+                                    }
+                                  }
+                                  const canUseVoiceCalls = isAdmin || (effectivePlan === 'plus' || effectivePlan === 'pro');
+                                  const friendPlan = friend.profiles.plan || 'free';
+                                  const isFriendAdmin = friend.profiles.role === 'admin';
+                                  let friendEffectivePlan = friendPlan;
+                                  if (friend.profiles.plan_expires_at && friendPlan !== 'free') {
+                                    const expiresAt = new Date(friend.profiles.plan_expires_at);
+                                    const now = new Date();
+                                    if (expiresAt < now) {
+                                      friendEffectivePlan = 'free';
+                                    }
+                                  }
+                                  const friendCanReceiveCalls = isFriendAdmin || (friendEffectivePlan === 'plus' || friendEffectivePlan === 'pro');
+                                  const isDisabled = !canUseVoiceCalls || !friendCanReceiveCalls || !isDeviceReady || (callState !== 'idle' && callState !== 'disconnected');
+                                  
+                                  let tooltipText = 'Call friend';
+                                  if (!canUseVoiceCalls) {
+                                    tooltipText = 'Upgrade to Plus or Pro plan for voice call integration';
+                                  } else if (!friendCanReceiveCalls) {
+                                    tooltipText = 'This friend cannot receive calls (Free plan)';
+                                  } else if (!isDeviceReady) {
+                                    tooltipText = 'Initializing...';
+                                  }
+
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm" 
+                                          className={`${isDisabled && (!canUseVoiceCalls || !friendCanReceiveCalls) ? 'opacity-50 cursor-not-allowed text-gray-400' : 'text-home-foreground hover:bg-home-surface'}`}
+                                          onClick={() => {
+                                            if (!canUseVoiceCalls) {
+                                              toast({
+                                                title: "Voice Calls Unavailable",
+                                                description: "Voice calls are only available for Plus and Pro plans. Please upgrade your plan to use this feature.",
+                                                variant: "default",
+                                              });
+                                              return;
+                                            }
+                                            if (!friendCanReceiveCalls) {
+                                              const friendName = `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email;
+                                              toast({
+                                                title: "Cannot Call Friend",
+                                                description: `${friendName} cannot receive calls because they are on the Free plan. Voice calls are only available for Plus and Pro plans.`,
+                                                variant: "default",
+                                              });
+                                              return;
+                                            }
+                                            const friendName = `${friend.profiles.first_name || ''} ${friend.profiles.last_name || ''}`.trim() || friend.profiles.email;
+                                            initiateCall(friend.profiles.id, friendName, friend.profiles.image_url);
+                                          }}
+                                          disabled={isDisabled}
+                                        >
+                                          <Phone className="w-4 h-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{tooltipText}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                })()}
+                              </div>
                             </div>
                             
                             <div className="space-y-2">
-                              <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-                                <div className="flex items-center gap-1">
-                                  <Brain className="w-3 h-3 text-purple-500" />
-                                  <span>{totalProblems} problems</span>
+                              {isLoadingMetrics && !friendMetrics[friend.friend_id] ? (
+                                // Show skeleton while loading metrics
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-4 text-xs">
+                                    <Skeleton className="h-4 w-24" />
+                                    <Skeleton className="h-4 w-20" />
+                                  </div>
+                                  <Skeleton className="h-3 w-full" />
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-green-500" />
-                                  <span>{totalMinutes} mins</span>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
-                                <span>Lifetime: {lifetimeQuestions} problems</span>
-                                <span>|</span>
-                                <span>{lifetimeMinutes} mins</span>
-                                {(longestStreak > 0 || currentStreak > 0) && (
-                                  <>
+                              ) : (
+                                // Show actual metrics
+                                <>
+                                  <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+                                    <div className="flex items-center gap-1">
+                                      <Brain className="w-3 h-3 text-purple-500" />
+                                      <span>{totalProblems} problems</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-green-500" />
+                                      <span>{totalMinutes} mins</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                                    <span>Lifetime: {lifetimeQuestions} problems</span>
                                     <span>|</span>
-                                    <span>Streaks: {currentStreak} current / {longestStreak} best</span>
-                                  </>
-                                )}
-                              </div>
+                                    <span>{lifetimeMinutes} mins</span>
+                                    {(longestStreak > 0 || currentStreak > 0) && (
+                                      <>
+                                        <span>|</span>
+                                        <span>Streaks: {currentStreak} current / {longestStreak} best</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
-                </div>
+                  </div>
+                </TooltipProvider>
               ) : (
                 <div className="text-center py-12 text-gray-600 dark:text-gray-400">
                   <Users className="w-16 h-16 mx-auto mb-4 opacity-30" />
@@ -1386,14 +1600,26 @@ const Friends = () => {
                         <div className="space-y-2">
                           {incomingRequests.map((request) => (
                             <div key={request.user_id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-accent rounded-lg">
-                              <Avatar className="w-10 h-10">
+                              <Avatar 
+                                className="w-10 h-10 cursor-pointer hover:ring-2 hover:ring-home-primary/50 transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProfileUserId(request.user_id);
+                                }}
+                              >
                                 <AvatarImage src={request.profiles?.image_url} />
                                 <AvatarFallback className="bg-home-primary text-white">
                                   {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-home-foreground truncate">
+                                <p 
+                                  className="font-medium text-home-foreground truncate cursor-pointer hover:text-home-primary transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedProfileUserId(request.user_id);
+                                  }}
+                                >
                                   {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
                                 </p>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -1452,14 +1678,26 @@ const Friends = () => {
                         <div className="space-y-2">
                           {outgoingRequests.map((request) => (
                             <div key={request.friend_id} className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                              <Avatar className="w-10 h-10">
+                              <Avatar 
+                                className="w-10 h-10 cursor-pointer hover:ring-2 hover:ring-home-primary/50 transition-all"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedProfileUserId(request.friend_id);
+                                }}
+                              >
                                 <AvatarImage src={request.profiles?.image_url} />
                                 <AvatarFallback className="bg-blue-500 text-white">
                                   {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-home-foreground truncate">
+                                <p 
+                                  className="font-medium text-home-foreground truncate cursor-pointer hover:text-home-primary transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedProfileUserId(request.friend_id);
+                                  }}
+                                >
                                   {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
                                 </p>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -1528,6 +1766,13 @@ const Friends = () => {
         onClose={() => setIsSettingsOpen(false)} 
       />
 
+      <UserProfileModal
+        isOpen={selectedProfileUserId !== null}
+        onClose={() => setSelectedProfileUserId(null)}
+        userId={selectedProfileUserId || ""}
+        currentUserId={user?.id || null}
+      />
+
       {chatFriend && (
         <FriendChat
           friendId={chatFriend.id}
@@ -1535,6 +1780,7 @@ const Friends = () => {
           onClose={handleCloseChat}
         />
       )}
+      <ReportIssueFooter />
     </div>
   );
 };

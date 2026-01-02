@@ -7,6 +7,18 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import twilio from 'twilio';
+import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
+import { requireUser, getUserFromRequest } from './middleware/auth.js';
+import { incrementAndCheckUsage, getUsageToday } from './lib/usageTracking.js';
+import { getPlanConfig } from './lib/subscription.js';
+import { 
+  validateInput, 
+  uuidSchema, 
+  planTypeSchema, 
+  contentSchema, 
+  titleSchema 
+} from './lib/validation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,19 +26,49 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const OPENAI_API_KEY = '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';
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ limit: '25mb', extended: true })); // This handles Twilio's form-encoded POST requests
 
-// Initialize OpenAI with hardcoded key
+// Initialize OpenAI - API key from environment variable
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+if (!OPENAI_API_KEY) {
+  console.error('❌ ERROR: OPENAI_API_KEY environment variable is required');
+  console.error('Please set OPENAI_API_KEY in your .env file');
+  process.exit(1);
+}
+
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
 });
 
 console.log('✅ OpenAI API key loaded successfully');
+
+// Initialize Supabase client
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wvspwskluqkqeniwtoqf.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+if (!SUPABASE_SERVICE_KEY) {
+  console.error('❌ ERROR: SUPABASE_SERVICE_KEY environment variable is required');
+  console.error('Please set SUPABASE_SERVICE_KEY in your .env file');
+  console.warn('⚠️  NOTE: Do NOT use the anon key here. Use the service_role key for backend operations.');
+  process.exit(1);
+}
+
+// Check if we're using service role key (should start with eyJ and contain "service_role" in payload)
+if (SUPABASE_SERVICE_KEY.includes('anon')) {
+  console.warn('⚠️  WARNING: Detected anon key. For backend operations, use SUPABASE_SERVICE_KEY (service_role key) instead.');
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+  },
+});
+
+console.log('✅ Supabase client initialized');
 
 // Initialize Twilio
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
@@ -38,6 +80,19 @@ if (TWILIO_ACCOUNT_SID && TWILIO_API_KEY && TWILIO_API_SECRET) {
   console.log('✅ Twilio credentials loaded successfully');
 } else {
   console.warn('⚠️ Twilio credentials not configured. Voice calling will not work.');
+}
+
+// Initialize Stripe
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+let stripe = null;
+
+if (STRIPE_SECRET_KEY) {
+  stripe = new Stripe(STRIPE_SECRET_KEY, {
+    apiVersion: '2024-11-20.acacia',
+  });
+  console.log('✅ Stripe initialized successfully');
+} else {
+  console.warn('⚠️ Stripe secret key not configured. Payment processing will not work.');
 }
 
 // Configure multer for file uploads
@@ -73,11 +128,28 @@ if (!fs.existsSync(uploadsDir)) {
  * Route to process images with OpenAI Vision API
  * POST /api/process-image
  * Body: FormData with 'image' file and optional 'prompt' text
+ * Headers: Authorization: Bearer <token>
  */
-app.post('/api/process-image', upload.single('image'), async (req, res) => {
+app.post('/api/process-image', requireUser(), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+
+    const user = req.user;
+
+    // Track usage and check limits
+    try {
+      await incrementAndCheckUsage(user, supabase);
+    } catch (usageError) {
+      // Clean up file before returning error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(429).json({
+        success: false,
+        error: usageError.message || 'Daily query limit exceeded'
+      });
     }
 
     const prompt = req.body.prompt || 'Analyze this image and provide a detailed description.';
@@ -126,6 +198,14 @@ app.post('/api/process-image', upload.single('image'), async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
+    // If it's a usage error, return 429
+    if (error.message && error.message.includes('limit')) {
+      return res.status(429).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to process image'
@@ -137,11 +217,28 @@ app.post('/api/process-image', upload.single('image'), async (req, res) => {
  * Route to process whiteboard/text images with specific analysis
  * POST /api/analyze-whiteboard
  * Body: FormData with 'image' file
+ * Headers: Authorization: Bearer <token>
  */
-app.post('/api/analyze-whiteboard', upload.single('image'), async (req, res) => {
+app.post('/api/analyze-whiteboard', requireUser(), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+
+    const user = req.user;
+
+    // Track usage and check limits
+    try {
+      await incrementAndCheckUsage(user, supabase);
+    } catch (usageError) {
+      // Clean up file before returning error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(429).json({
+        success: false,
+        error: usageError.message || 'Daily query limit exceeded'
+      });
     }
 
     // Read the uploaded image
@@ -207,11 +304,19 @@ Now provide a detailed solution:`;
     // Extract the response text
     const analysis = response.choices[0]?.message?.content || 'No analysis available';
 
+    // Extract token usage if available
+    const tokenUsage = response.usage ? {
+      prompt_tokens: response.usage.prompt_tokens || 0,
+      completion_tokens: response.usage.completion_tokens || 0,
+      total_tokens: response.usage.total_tokens || 0
+    } : null;
+
     res.json({
       success: true,
       analysis: analysis,
       topics: extractTopics(analysis),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      tokenUsage: tokenUsage
     });
 
   } catch (error) {
@@ -220,6 +325,14 @@ Now provide a detailed solution:`;
     // Clean up file if it exists
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
+    }
+
+    // If it's a usage or feature error, return appropriate status
+    if (error.message && (error.message.includes('limit') || error.message.includes('subscription'))) {
+      return res.status(error.message.includes('limit') ? 429 : 403).json({
+        success: false,
+        error: error.message
+      });
     }
 
     res.status(500).json({
@@ -233,11 +346,28 @@ Now provide a detailed solution:`;
  * Route to extract text from images (OCR-like functionality)
  * POST /api/extract-text
  * Body: FormData with 'image' file
+ * Headers: Authorization: Bearer <token>
  */
-app.post('/api/extract-text', upload.single('image'), async (req, res) => {
+app.post('/api/extract-text', requireUser(), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
+      return res.status(400).json({ success: false, error: 'No image file provided' });
+    }
+
+    const user = req.user;
+
+    // Track usage and check limits
+    try {
+      await incrementAndCheckUsage(user, supabase);
+    } catch (usageError) {
+      // Clean up file before returning error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(429).json({
+        success: false,
+        error: usageError.message || 'Daily query limit exceeded'
+      });
     }
 
     // Read the uploaded image
@@ -284,6 +414,14 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
+    // If it's a usage error, return 429
+    if (error.message && error.message.includes('limit')) {
+      return res.status(429).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to extract text'
@@ -295,9 +433,11 @@ app.post('/api/extract-text', upload.single('image'), async (req, res) => {
  * Route to generate a practice question from whiteboard image
  * POST /api/generate-question
  * Body: JSON with 'image' (base64) and 'instructions'
+ * Headers: Authorization: Bearer <token>
  */
-app.post('/api/generate-question', async (req, res) => {
+app.post('/api/generate-question', requireUser(), async (req, res) => {
   try {
+    const user = req.user;
     const { image, instructions, context } = req.body;
     
     if (!image) {
@@ -305,7 +445,43 @@ app.post('/api/generate-question', async (req, res) => {
       return res.status(400).json({ success: false, error: 'No image provided' });
     }
 
-    const baseInstructions = (instructions || '').trim() || [
+    // Validate instructions if provided (optional field)
+    let validatedInstructions = '';
+    if (instructions && typeof instructions === 'string') {
+      const instructionsValidation = validateInput(contentSchema, instructions);
+      if (!instructionsValidation.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid instructions: ${instructionsValidation.error}` 
+        });
+      }
+      validatedInstructions = instructionsValidation.data;
+    }
+
+    // Validate context if provided (optional field)
+    let validatedContext = '';
+    if (context && typeof context === 'string') {
+      const contextValidation = validateInput(contentSchema, context);
+      if (!contextValidation.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid context: ${contextValidation.error}` 
+        });
+      }
+      validatedContext = contextValidation.data;
+    }
+
+    // Track usage and check limits
+    try {
+      await incrementAndCheckUsage(user, supabase);
+    } catch (usageError) {
+      return res.status(429).json({
+        success: false,
+        error: usageError.message || 'Daily query limit exceeded'
+      });
+    }
+
+    const baseInstructions = validatedInstructions || [
       'You are given a screenshot of a whiteboard from a study session.',
       'Create ONE new, related practice problem based strictly on the topics and context visible in the screenshot.',
       'Rules:',
@@ -317,7 +493,7 @@ app.post('/api/generate-question', async (req, res) => {
       '- Make it self-contained and solvable without referencing the screenshot.',
     ].join(' ');
 
-    const contextSnippet = (context || '').trim();
+    const contextSnippet = validatedContext;
     const prompt = contextSnippet
       ? `${baseInstructions}\n\nAdditional context from a worked solution (do NOT copy it, just use as guidance for topic and difficulty):\n${contextSnippet.substring(0, 2000)}`
       : baseInstructions;
@@ -438,6 +614,14 @@ app.post('/api/generate-question', async (req, res) => {
   } catch (error) {
     console.error('Error generating question:', error);
 
+    // If it's a usage error, return 429
+    if (error.message && error.message.includes('limit')) {
+      return res.status(429).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate question'
@@ -449,23 +633,54 @@ app.post('/api/generate-question', async (req, res) => {
  * Route to rewrite content into detailed plain-English steps
  * POST /api/rewrite-steps
  * Body: JSON { content: string, instructions?: string }
+ * Headers: Authorization: Bearer <token>
  */
-app.post('/api/rewrite-steps', async (req, res) => {
+app.post('/api/rewrite-steps', requireUser(), async (req, res) => {
   try {
+    const user = req.user;
     const { content, instructions } = req.body || {};
-    if (!content || typeof content !== 'string') {
-      console.warn('[rewrite-steps] Missing or invalid content');
-      return res.status(400).json({ success: false, error: 'Missing content' });
+    
+    // Validate content (required)
+    const contentValidation = validateInput(contentSchema, content);
+    if (!contentValidation.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: contentValidation.error || 'Invalid content' 
+      });
+    }
+    const validatedContent = contentValidation.data;
+
+    // Validate instructions if provided (optional)
+    let validatedInstructions = '';
+    if (instructions && typeof instructions === 'string') {
+      const instructionsValidation = validateInput(titleSchema, instructions);
+      if (!instructionsValidation.success) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `Invalid instructions: ${instructionsValidation.error}` 
+        });
+      }
+      validatedInstructions = instructionsValidation.data;
+    }
+
+    // Track usage and check limits
+    try {
+      await incrementAndCheckUsage(user, supabase);
+    } catch (usageError) {
+      return res.status(429).json({
+        success: false,
+        error: usageError.message || 'Daily query limit exceeded'
+      });
     }
 
     const prompt = [
-      (instructions || '').trim() || 'Rewrite the solution as clear, numbered steps.',
+      validatedInstructions || 'Rewrite the solution as clear, numbered steps.',
       'Formatting requirements:',
       '- Number each step: Step 1., Step 2., etc.',
       '- Use LaTeX for all mathematical expressions (inline \(...\), display \[...\], and \boxed{} for final answers where appropriate).',
       '- Keep prose concise but complete; maintain any important explanations.',
       'Content to rewrite:',
-      content.substring(0, 8000),
+      validatedContent.substring(0, 8000),
     ].join('\n');
 
     const response = await openai.chat.completions.create({
@@ -485,6 +700,15 @@ app.post('/api/rewrite-steps', async (req, res) => {
     res.json({ success: true, steps, timestamp: new Date().toISOString() });
   } catch (error) {
     console.error('Error rewriting steps:', error);
+    
+    // If it's a usage error, return 429
+    if (error.message && error.message.includes('limit')) {
+      return res.status(429).json({
+        success: false,
+        error: error.message
+      });
+    }
+
     res.status(500).json({ success: false, error: error.message || 'Failed to rewrite steps' });
   }
 });
@@ -556,6 +780,185 @@ app.post('/api/twilio/voice', (req, res) => {
 });
 
 /**
+ * Route to moderate content using OpenAI Moderation API
+ * POST /api/moderate-content
+ * Body: { text: string, contentType: 'post' | 'reply', image?: string (base64) }
+ */
+app.post('/api/moderate-content', async (req, res) => {
+  try {
+    const { text, contentType, image } = req.body;
+
+    // Validate text content (required)
+    const textValidation = validateInput(contentSchema, text);
+    if (!textValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: textValidation.error || 'Text content is required'
+      });
+    }
+    const validatedText = textValidation.data;
+
+    // Validate contentType using enum
+    if (!contentType || !['post', 'reply'].includes(contentType)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Content type must be "post" or "reply"'
+      });
+    }
+
+    // Prepare input for moderation - can be text only or text + image
+    let moderationInput;
+    if (image && typeof image === 'string') {
+      // If image is provided, use vision model to analyze both text and image
+      // For image moderation, we need to use the chat completions API with vision
+      // since the moderation API doesn't directly support images
+      // We'll extract text from the image and combine with the text content
+      try {
+        // Use vision API to describe the image for moderation purposes
+        const visionResponse = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Describe this image in detail, including any text, objects, people, or content visible. Be thorough and explicit." },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: image.startsWith('data:') ? image : `data:image/png;base64,${image}`,
+                  },
+                },
+              ],
+            },
+          ],
+          max_tokens: 500,
+        });
+        
+        const imageDescription = visionResponse.choices[0]?.message?.content || '';
+        // Combine text and image description for moderation
+        moderationInput = `${validatedText}\n\nImage content: ${imageDescription}`;
+      } catch (visionError) {
+        console.error('[Moderation] Error analyzing image with vision API:', visionError);
+        // Fallback to text-only moderation if vision fails
+        moderationInput = validatedText;
+      }
+    } else {
+      moderationInput = validatedText;
+    }
+
+    // Call OpenAI Moderation API
+    const moderation = await openai.moderations.create({
+      model: "omni-moderation-latest",
+      input: moderationInput,
+    });
+
+    const result = moderation.results[0];
+    
+    // Categories to block: inappropriate content including slurs, hate speech, harassment, violence, and NSFW
+    const blockedCategories = {
+      sexual: result.categories.sexual,
+      'sexual/minors': result.categories['sexual/minors'],
+      hate: result.categories.hate, // Blocks slurs and hate speech
+      'hate/threatening': result.categories['hate/threatening'],
+      harassment: result.categories.harassment,
+      'harassment/threatening': result.categories['harassment/threatening'],
+      violence: result.categories.violence,
+      'violence/graphic': result.categories['violence/graphic'],
+      'self-harm': result.categories['self-harm'],
+      'self-harm/intent': result.categories['self-harm/intent'],
+      'self-harm/instructions': result.categories['self-harm/instructions'],
+    };
+
+    // Check if any blocked categories are flagged
+    const isBlocked = 
+      blockedCategories.sexual || 
+      blockedCategories['sexual/minors'] ||
+      blockedCategories.hate ||
+      blockedCategories['hate/threatening'] ||
+      blockedCategories.harassment ||
+      blockedCategories['harassment/threatening'] ||
+      blockedCategories.violence ||
+      blockedCategories['violence/graphic'] ||
+      blockedCategories['self-harm'] ||
+      blockedCategories['self-harm/intent'] ||
+      blockedCategories['self-harm/instructions'];
+
+    // Build reason if blocked
+    let reason = null;
+    if (isBlocked) {
+      const reasons = [];
+      if (blockedCategories.sexual) {
+        reasons.push('inappropriate sexual content');
+      }
+      if (blockedCategories['sexual/minors']) {
+        reasons.push('content involving minors');
+      }
+      if (blockedCategories.hate || blockedCategories['hate/threatening']) {
+        reasons.push('hate speech or slurs');
+      }
+      if (blockedCategories.harassment || blockedCategories['harassment/threatening']) {
+        reasons.push('harassment');
+      }
+      if (blockedCategories.violence || blockedCategories['violence/graphic']) {
+        reasons.push('violent content');
+      }
+      if (blockedCategories['self-harm'] || blockedCategories['self-harm/intent'] || blockedCategories['self-harm/instructions']) {
+        reasons.push('self-harm content');
+      }
+      reason = reasons.join(', ');
+    }
+
+    // Log moderation attempt for audit
+    console.log('[Moderation] Content checked:', {
+      contentType,
+      textLength: validatedText.length,
+      hasImage: !!image,
+      isBlocked,
+      reason,
+      categories: {
+        sexual: result.categories.sexual,
+        'sexual/minors': result.categories['sexual/minors'],
+        hate: result.categories.hate,
+        'hate/threatening': result.categories['hate/threatening'],
+        harassment: result.categories.harassment,
+        'harassment/threatening': result.categories['harassment/threatening'],
+        violence: result.categories.violence,
+        'violence/graphic': result.categories['violence/graphic'],
+        'self-harm': result.categories['self-harm'],
+        flagged: result.flagged
+      }
+    });
+
+    res.json({
+      success: true,
+      blocked: isBlocked,
+      reason: reason || undefined,
+      categories: {
+        sexual: result.categories.sexual,
+        'sexual/minors': result.categories['sexual/minors'],
+        hate: result.categories.hate,
+        'hate/threatening': result.categories['hate/threatening'],
+        harassment: result.categories.harassment,
+        'harassment/threatening': result.categories['harassment/threatening'],
+        violence: result.categories.violence,
+        'violence/graphic': result.categories['violence/graphic'],
+        'self-harm': result.categories['self-harm'],
+        'self-harm/intent': result.categories['self-harm/intent'],
+        'self-harm/instructions': result.categories['self-harm/instructions'],
+        flagged: result.flagged
+      }
+    });
+
+  } catch (error) {
+    console.error('[Moderation] Error checking content:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to moderate content'
+    });
+  }
+});
+
+/**
  * Route to generate Twilio access token for voice calls
  * POST /api/twilio/token
  * Body: { userId: string }
@@ -564,12 +967,16 @@ app.post('/api/twilio/token', async (req, res) => {
   try {
     const { userId } = req.body;
 
-    if (!userId) {
+    // Validate UUID format
+    const validation = validateInput(uuidSchema, userId);
+    if (!validation.success) {
       return res.status(400).json({ 
         success: false, 
-        error: 'User ID is required' 
+        error: validation.error || 'Invalid user ID format' 
       });
     }
+
+    const validatedUserId = validation.data;
 
     if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET || !TWILIO_APP_SID) {
       return res.status(500).json({ 
@@ -593,7 +1000,7 @@ app.post('/api/twilio/token', async (req, res) => {
       TWILIO_ACCOUNT_SID,
       TWILIO_API_KEY,
       TWILIO_API_SECRET,
-      { identity: userId, ttl: 3600 } // Token expires in 1 hour
+      { identity: validatedUserId, ttl: 3600 } // Token expires in 1 hour
     );
 
     token.addGrant(voiceGrant);
@@ -604,7 +1011,7 @@ app.post('/api/twilio/token', async (req, res) => {
     res.json({
       success: true,
       token: jwt,
-      identity: userId,
+      identity: validatedUserId,
       timestamp: new Date().toISOString()
     });
 
@@ -613,6 +1020,201 @@ app.post('/api/twilio/token', async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate access token'
+    });
+  }
+});
+
+/**
+ * Route to get user's subscription status and usage
+ * GET /api/user/subscription
+ * Headers: Authorization: Bearer <token>
+ */
+app.get('/api/user/subscription', requireUser(), async (req, res) => {
+  try {
+    const user = req.user;
+    const config = getPlanConfig(user);
+    const usageToday = await getUsageToday(user, supabase);
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        plan: user.plan,
+        plan_expires_at: user.plan_expires_at,
+      },
+      usage: {
+        today: usageToday,
+        limit: config.maxDailyQueries,
+        remaining: Number.isFinite(config.maxDailyQueries) 
+          ? Math.max(0, config.maxDailyQueries - usageToday)
+          : Infinity,
+      },
+      features: {
+        canUploadTextbookPDFs: config.canUploadTextbookPDFs,
+        maxPagesPerPDF: config.maxPagesPerPDF,
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error fetching subscription status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch subscription status'
+    });
+  }
+});
+
+/**
+ * Route to get comprehensive subscription details
+ * GET /api/user/subscription-details
+ * Headers: Authorization: Bearer <token>
+ */
+app.get('/api/user/subscription-details', requireUser(), async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Get current plan from profile
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('plan, plan_expires_at, knowledge_points')
+      .eq('id', user.id)
+      .single();
+
+    // Get KP redemptions
+    const { data: redemptions } = await supabase
+      .from('subscription_redemptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    // Get Stripe subscriptions if Stripe is configured
+    let stripeSubscriptions = [];
+    let stripePayments = [];
+    
+    if (stripe) {
+      try {
+        // Find customer by email
+        const customers = await stripe.customers.list({
+          email: user.email,
+          limit: 1,
+        });
+
+        if (customers.data.length > 0) {
+          const customer = customers.data[0];
+          
+          // Get subscriptions
+          const subscriptions = await stripe.subscriptions.list({
+            customer: customer.id,
+            status: 'all',
+            limit: 100,
+          });
+
+          stripeSubscriptions = await Promise.all(
+            subscriptions.data.map(async (sub) => {
+              // Get payment intents/invoices for this subscription
+              const invoices = await stripe.invoices.list({
+                subscription: sub.id,
+                limit: 100,
+              });
+
+              return {
+                id: sub.id,
+                status: sub.status,
+                plan: sub.metadata?.plan || 'unknown',
+                current_period_start: new Date(sub.current_period_start * 1000).toISOString(),
+                current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
+                cancel_at_period_end: sub.cancel_at_period_end,
+                canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+                created: new Date(sub.created * 1000).toISOString(),
+                items: sub.items.data.map(item => ({
+                  price_id: item.price.id,
+                  amount: item.price.unit_amount / 100, // Convert from cents
+                  currency: item.price.currency,
+                  interval: item.price.recurring?.interval,
+                })),
+                invoices: invoices.data.map(inv => ({
+                  id: inv.id,
+                  amount_paid: inv.amount_paid / 100,
+                  currency: inv.currency,
+                  status: inv.status,
+                  created: new Date(inv.created * 1000).toISOString(),
+                  paid_at: inv.status_transitions.paid_at ? new Date(inv.status_transitions.paid_at * 1000).toISOString() : null,
+                  period_start: inv.period_start ? new Date(inv.period_start * 1000).toISOString() : null,
+                  period_end: inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null,
+                })),
+              };
+            })
+          );
+
+          // Get all payment intents for this customer
+          const paymentIntents = await stripe.paymentIntents.list({
+            customer: customer.id,
+            limit: 100,
+          });
+
+          stripePayments = paymentIntents.data
+            .filter(pi => pi.status === 'succeeded')
+            .map(pi => ({
+              id: pi.id,
+              amount: pi.amount / 100,
+              currency: pi.currency,
+              status: pi.status,
+              created: new Date(pi.created * 1000).toISOString(),
+              description: pi.description,
+            }));
+        }
+      } catch (stripeError) {
+        console.warn('Error fetching Stripe data:', stripeError.message);
+        // Continue without Stripe data
+      }
+    }
+
+    // Determine effective plan
+    const now = new Date();
+    const expiresAt = profile?.plan_expires_at ? new Date(profile.plan_expires_at) : null;
+    const isExpired = expiresAt && expiresAt < now;
+    const effectivePlan = isExpired ? 'free' : (profile?.plan || 'free');
+
+    // Get active KP redemption
+    const activeRedemption = redemptions?.find(
+      r => r.is_active && new Date(r.expires_at) > now
+    );
+
+    // Get active Stripe subscription
+    const activeStripeSub = stripeSubscriptions.find(
+      s => s.status === 'active' && new Date(s.current_period_end) > now
+    );
+
+    res.json({
+      success: true,
+      currentPlan: {
+        plan: effectivePlan,
+        plan_expires_at: profile?.plan_expires_at,
+        isExpired,
+        source: activeStripeSub ? 'stripe' : (activeRedemption ? 'kp' : 'free'),
+      },
+      knowledgePoints: profile?.knowledge_points || 0,
+      kpRedemptions: redemptions?.map(r => ({
+        id: r.id,
+        subscription_type: r.subscription_type,
+        knowledge_points_spent: r.knowledge_points_spent,
+        expires_at: r.expires_at,
+        created_at: r.created_at,
+        is_active: r.is_active,
+        isExpired: new Date(r.expires_at) < now,
+      })) || [],
+      stripeSubscriptions: stripeSubscriptions,
+      stripePayments: stripePayments,
+      nextBilling: activeStripeSub ? activeStripeSub.current_period_end : null,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error fetching subscription details:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch subscription details'
     });
   }
 });
@@ -639,6 +1241,452 @@ function extractTopics(analysis) {
   
   return topics.length > 0 ? topics : [analysis.substring(0, 200)];
 }
+
+/**
+ * Create Stripe Checkout Session for subscription
+ * POST /api/create-checkout-session
+ * Body: { plan: 'plus' | 'pro' }
+ */
+app.post('/api/create-checkout-session', requireUser(), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  try {
+    const user = await getUserFromRequest(req);
+    const { plan } = req.body;
+
+    // Validate plan type using schema
+    const planValidation = validateInput(planTypeSchema, plan);
+    if (!planValidation.success) {
+      return res.status(400).json({ 
+        error: planValidation.error || 'Invalid plan. Must be "plus" or "pro"' 
+      });
+    }
+
+    const validatedPlan = planValidation.data;
+
+    // Price IDs from Stripe
+    const priceIds = {
+      plus: 'price_1Ska9MBb5yZzWKrB2cqyoY2W', // $7/month
+      pro: 'price_1Ska9QBb5yZzWKrBeUn4nJH1',  // $15/month
+    };
+
+    const priceId = priceIds[validatedPlan];
+
+    if (!priceId) {
+      return res.status(400).json({ error: 'Price not found for plan' });
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/app?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/pricing?subscription=cancelled`,
+      customer_email: user.email,
+      metadata: {
+        user_id: user.id,
+        plan: validatedPlan,
+      },
+      subscription_data: {
+        metadata: {
+          user_id: user.id,
+          plan: validatedPlan,
+        },
+      },
+    });
+
+    res.json({ sessionId: session.id, url: session.url });
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({ error: error.message || 'Failed to create checkout session' });
+  }
+});
+
+/**
+ * Cancel Stripe subscription
+ * POST /api/cancel-subscription
+ * Headers: Authorization: Bearer <token>
+ * Body: { subscriptionId: string }
+ */
+app.post('/api/cancel-subscription', requireUser(), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ 
+      success: false,
+      error: 'Stripe not configured' 
+    });
+  }
+
+  try {
+    const user = await getUserFromRequest(req);
+    const { subscriptionId } = req.body;
+
+    if (!subscriptionId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Subscription ID is required' 
+      });
+    }
+
+    // Verify the subscription belongs to the user
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    
+    // Get customer by email to verify ownership
+    const customers = await stripe.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+
+    if (customers.data.length === 0 || subscription.customer !== customers.data[0].id) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Subscription does not belong to this user' 
+      });
+    }
+
+    // Cancel the subscription at period end (recommended approach)
+    const canceledSubscription = await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: true,
+    });
+
+    res.json({
+      success: true,
+      message: 'Subscription will be canceled at the end of the current billing period',
+      subscription: {
+        id: canceledSubscription.id,
+        status: canceledSubscription.status,
+        cancel_at_period_end: canceledSubscription.cancel_at_period_end,
+        current_period_end: new Date(canceledSubscription.current_period_end * 1000).toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Error canceling subscription:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to cancel subscription' 
+    });
+  }
+});
+
+/**
+ * Reactivate canceled Stripe subscription
+ * POST /api/reactivate-subscription
+ * Headers: Authorization: Bearer <token>
+ * Body: { subscriptionId: string }
+ */
+app.post('/api/reactivate-subscription', requireUser(), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ 
+      success: false,
+      error: 'Stripe not configured' 
+    });
+  }
+
+  try {
+    const user = await getUserFromRequest(req);
+    const { subscriptionId } = req.body;
+
+    if (!subscriptionId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Subscription ID is required' 
+      });
+    }
+
+    // Verify the subscription belongs to the user
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    
+    // Get customer by email to verify ownership
+    const customers = await stripe.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+
+    if (customers.data.length === 0 || subscription.customer !== customers.data[0].id) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Subscription does not belong to this user' 
+      });
+    }
+
+    // Reactivate the subscription
+    const reactivatedSubscription = await stripe.subscriptions.update(subscriptionId, {
+      cancel_at_period_end: false,
+    });
+
+    res.json({
+      success: true,
+      message: 'Subscription has been reactivated',
+      subscription: {
+        id: reactivatedSubscription.id,
+        status: reactivatedSubscription.status,
+        cancel_at_period_end: reactivatedSubscription.cancel_at_period_end,
+        current_period_end: new Date(reactivatedSubscription.current_period_end * 1000).toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Error reactivating subscription:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message || 'Failed to reactivate subscription' 
+    });
+  }
+});
+
+/**
+ * Stripe webhook handler for subscription events
+ * POST /api/webhooks/stripe
+ */
+app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.warn('⚠️ STRIPE_WEBHOOK_SECRET not set. Webhook verification disabled.');
+    return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  try {
+    // Handle the event
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        const userId = session.metadata?.user_id;
+        const plan = session.metadata?.plan;
+
+        if (userId && plan) {
+          // Validate UUID and plan type from Stripe metadata
+          const userIdValidation = validateInput(uuidSchema, userId);
+          const planValidation = validateInput(planTypeSchema, plan);
+          
+          if (!userIdValidation.success || !planValidation.success) {
+            console.error('Invalid user_id or plan in Stripe webhook:', {
+              userIdError: userIdValidation.error,
+              planError: planValidation.error
+            });
+            break;
+          }
+
+          const validatedUserId = userIdValidation.data;
+          const validatedPlan = planValidation.data;
+
+          // Calculate expiration date (1 month from now)
+          const expiresAt = new Date();
+          expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+          // Update user's plan in database
+          // Note: This will be synced with KP redemptions by the sync_user_plan function if it exists
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              plan: validatedPlan,
+              plan_expires_at: expiresAt.toISOString(),
+            })
+            .eq('id', validatedUserId);
+          
+          // Sync plan to ensure KP redemptions and Stripe subscriptions work together
+          // This ensures the user gets the highest plan with latest expiration
+          try {
+            await supabase.rpc('sync_user_plan', { p_user_id: validatedUserId });
+          } catch (syncError) {
+            // If sync function doesn't exist yet, that's okay - the update above will work
+            console.warn('[Stripe Webhook] Could not sync plan (function may not exist yet):', syncError.message);
+          }
+
+          if (error) {
+            console.error('Error updating user plan:', error);
+          } else {
+            console.log(`✅ Updated user ${validatedUserId} to ${validatedPlan} plan`);
+          }
+
+          // Send invoice to customer email
+          if (stripe && session.subscription) {
+            try {
+              // Get the subscription to find the invoice
+              const subscription = await stripe.subscriptions.retrieve(session.subscription);
+              
+              // Get the latest invoice for this subscription
+              const invoices = await stripe.invoices.list({
+                subscription: subscription.id,
+                limit: 1,
+              });
+
+              if (invoices.data.length > 0) {
+                const invoice = invoices.data[0];
+                
+                // Send the invoice via email
+                // Stripe will automatically send it to the customer's email
+                await stripe.invoices.sendInvoice(invoice.id);
+                
+                console.log(`✅ Invoice ${invoice.id} sent to customer email for subscription ${subscription.id}`);
+              } else {
+                console.warn(`⚠️ No invoice found for subscription ${subscription.id}`);
+              }
+            } catch (invoiceError) {
+              // Log error but don't fail the webhook - plan update is more important
+              console.error('Error sending invoice email:', invoiceError.message);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'invoice.paid': {
+        // Send invoice email when payment is successful (for renewals and initial payments)
+        const invoice = event.data.object;
+        
+        if (stripe && invoice.subscription && invoice.status === 'paid' && invoice.amount_paid > 0) {
+          try {
+            // Only send if invoice hasn't been sent yet (check status)
+            // Stripe automatically sends some invoices, but we ensure it's sent here
+            if (invoice.status === 'paid') {
+              await stripe.invoices.sendInvoice(invoice.id);
+              console.log(`✅ Invoice ${invoice.id} sent to customer email after successful payment (amount: ${invoice.amount_paid / 100} ${invoice.currency})`);
+            }
+          } catch (invoiceError) {
+            // Invoice might already be sent - that's okay
+            if (invoiceError.code !== 'invoice_already_sent') {
+              console.warn('Error sending invoice email (may already be sent):', invoiceError.message);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted': {
+        const subscription = event.data.object;
+        const userId = subscription.metadata?.user_id;
+        const plan = subscription.metadata?.plan;
+
+        if (event.type === 'customer.subscription.deleted' || subscription.status !== 'active') {
+          // Subscription cancelled or expired - downgrade to free
+          if (userId) {
+            // Validate UUID from Stripe metadata
+            const userIdValidation = validateInput(uuidSchema, userId);
+            if (!userIdValidation.success) {
+              console.error('Invalid user_id in Stripe webhook:', userIdValidation.error);
+              break;
+            }
+            const validatedUserId = userIdValidation.data;
+
+            const { error } = await supabase
+              .from('profiles')
+              .update({
+                plan: 'free',
+                plan_expires_at: null,
+              })
+              .eq('id', validatedUserId);
+
+            if (error) {
+              console.error('Error downgrading user plan:', error);
+            } else {
+              console.log(`✅ Downgraded user ${validatedUserId} to free plan`);
+            }
+          }
+        } else if (userId && plan) {
+          // Subscription updated - extend expiration
+          // Validate UUID and plan type from Stripe metadata
+          const userIdValidation = validateInput(uuidSchema, userId);
+          const planValidation = validateInput(planTypeSchema, plan);
+          
+          if (!userIdValidation.success || !planValidation.success) {
+            console.error('Invalid user_id or plan in Stripe webhook:', {
+              userIdError: userIdValidation.error,
+              planError: planValidation.error
+            });
+            break;
+          }
+
+          const validatedUserId = userIdValidation.data;
+          const validatedPlan = planValidation.data;
+          const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
+          
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              plan: validatedPlan,
+              plan_expires_at: currentPeriodEnd.toISOString(),
+            })
+            .eq('id', validatedUserId);
+          
+          // Sync plan to ensure KP redemptions and Stripe subscriptions work together
+          try {
+            await supabase.rpc('sync_user_plan', { p_user_id: validatedUserId });
+          } catch (syncError) {
+            // If sync function doesn't exist yet, that's okay - the update above will work
+            console.warn('[Stripe Webhook] Could not sync plan (function may not exist yet):', syncError.message);
+          }
+
+          if (error) {
+            console.error('Error updating user plan:', error);
+          } else {
+            console.log(`✅ Updated user ${validatedUserId} ${validatedPlan} plan expiration`);
+          }
+
+          // Send invoice for subscription renewal (if payment was successful)
+          // Note: invoice.paid event will also handle this, but this ensures it's sent
+          if (stripe && subscription.id) {
+            try {
+              // Get the latest invoice for this subscription
+              const invoices = await stripe.invoices.list({
+                subscription: subscription.id,
+                limit: 1,
+              });
+
+              if (invoices.data.length > 0) {
+                const invoice = invoices.data[0];
+                // Only send if invoice is paid and not already sent
+                if (invoice.status === 'paid' && invoice.amount_paid > 0) {
+                  try {
+                    await stripe.invoices.sendInvoice(invoice.id);
+                    console.log(`✅ Renewal invoice ${invoice.id} sent to customer email`);
+                  } catch (sendError) {
+                    // Invoice might already be sent - that's okay
+                    if (sendError.code !== 'invoice_already_sent') {
+                      console.warn('Error sending renewal invoice email:', sendError.message);
+                    }
+                  }
+                }
+              }
+            } catch (invoiceError) {
+              console.warn('Error retrieving renewal invoice:', invoiceError.message);
+            }
+          }
+        }
+        break;
+      }
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`);
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Error processing webhook:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {

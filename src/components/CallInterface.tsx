@@ -72,8 +72,8 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
     return null;
   }
 
-  // Incoming call notification
-  if (callState === 'ringing') {
+  // Incoming call notification (ringing with incomingCallFrom means someone is calling us)
+  if (callState === 'ringing' && incomingCallFrom) {
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
         <div className="bg-white dark:bg-card rounded-lg shadow-md p-6 max-w-md w-full mx-4 border border-gray-200 dark:border-border">
@@ -128,8 +128,19 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
     );
   }
 
-  // Active call interface
-  if (callState === 'connecting' || callState === 'connected') {
+  // Active call interface (connecting, ringing, or connected)
+  // This handles outgoing calls (ringing without incomingCallFrom) and connected calls
+  const isConnecting = callState === 'connecting';
+  const isRinging = callState === 'ringing';
+  const isConnected = callState === 'connected';
+  
+  if (isConnecting || isRinging || isConnected) {
+    // For ringing state when calling (outgoing), show special message
+    const isRingingOutgoing = isRinging && !incomingCallFrom;
+    const ringingMessage = isRingingOutgoing 
+      ? 'Ringing... Waiting for them to join'
+      : getCallStatusText(callState);
+
     return (
       <div className="fixed bottom-6 right-6 z-[200] bg-white dark:bg-card rounded-lg shadow-md p-4 border border-gray-200 dark:border-border min-w-[280px]">
         <div className="flex flex-col items-center space-y-3">
@@ -145,8 +156,13 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
               {displayFriendName}
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              {getCallStatusText(callState)}
+              {ringingMessage}
             </p>
+            {isRingingOutgoing && (
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                They may need to open a document editor
+              </p>
+            )}
           </div>
 
           {error && (
@@ -156,24 +172,26 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
           )}
 
           <div className="flex gap-2 w-full">
-            <Button
-              onClick={isMuted ? onUnmute : onMute}
-              variant="outline"
-              size="sm"
-              className="flex-1"
-            >
-              {isMuted ? (
-                <>
-                  <MicOff className="w-4 h-4 mr-1" />
-                  Unmute
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-1" />
-                  Mute
-                </>
-              )}
-            </Button>
+            {callState === 'connected' && (
+              <Button
+                onClick={isMuted ? onUnmute : onMute}
+                variant="outline"
+                size="sm"
+                className="flex-1"
+              >
+                {isMuted ? (
+                  <>
+                    <MicOff className="w-4 h-4 mr-1" />
+                    Unmute
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-4 h-4 mr-1" />
+                    Mute
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               onClick={() => {
                 onEnd();
@@ -181,7 +199,7 @@ export const CallInterface: React.FC<CallInterfaceProps> = ({
               }}
               variant="destructive"
               size="sm"
-              className="flex-1"
+              className={callState === 'connected' ? 'flex-1' : 'w-full'}
             >
               <PhoneOff className="w-4 h-4 mr-1" />
               End

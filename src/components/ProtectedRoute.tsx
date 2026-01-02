@@ -1,16 +1,389 @@
+import { useEffect, useState, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { user, profile, loading } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [needsUsername, setNeedsUsername] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const location = useLocation();
+  const hasCheckedRef = useRef(false);
+  const isCheckingRef = useRef(false);
+  const lastActiveTimeRef = useRef(Date.now());
+  const isLoadingRef = useRef(false);
 
-  if (loading) {
+  useEffect(() => {
+    // Prevent multiple simultaneous checks
+    if (isCheckingRef.current) {
+      console.log('[ProtectedRoute] Already checking auth, skipping...');
+      return;
+    }
+
+    // Safety timeout - if we're still loading after 10 seconds, something is wrong
+    isLoadingRef.current = true;
+    const safetyTimeout = setTimeout(() => {
+      if (isLoadingRef.current) {
+        console.error('[ProtectedRoute] Safety timeout - forcing loading to false after 10s');
+        setIsLoading(false);
+        isCheckingRef.current = false;
+        hasCheckedRef.current = true;
+        setNeedsUsername(false);
+        isLoadingRef.current = false;
+      }
+    }, 10000);
+
+    const checkAuthAndUsername = async () => {
+      isCheckingRef.current = true;
+      console.log('[ProtectedRoute] Starting auth check...');
+      
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('[ProtectedRoute] Session error:', sessionError);
+          setIsAuthenticated(false);
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          isCheckingRef.current = false;
+          return;
+        }
+        
+        console.log('[ProtectedRoute] Session check result:', { 
+          hasSession: !!session, 
+          userId: session?.user?.id,
+          expiresAt: session?.expires_at,
+          path: location.pathname 
+        });
+        
+        if (!session) {
+          console.log('[ProtectedRoute] No session found, redirecting to auth');
+          setIsAuthenticated(false);
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          isCheckingRef.current = false;
+          return;
+        }
+
+        // Check if session is expired - if so, redirect to login
+        if (session.expires_at) {
+          const expiresAt = new Date(session.expires_at * 1000);
+          const now = new Date();
+          // Add 5 minute buffer to account for clock skew
+          const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
+          if (expiresAt.getTime() < (now.getTime() + bufferTime)) {
+            console.log('[ProtectedRoute] Session expired or expiring soon, redirecting to login');
+            // Clear the expired session
+            await supabase.auth.signOut();
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            isCheckingRef.current = false;
+            return;
+          }
+        }
+
+        // Verify session is actually valid by making a test query
+        // If this fails, the session is invalid even if it exists
+        try {
+          const { error: testError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', session.user.id)
+            .limit(1)
+            .single();
+          
+          if (testError && testError.code !== 'PGRST116') {
+            // PGRST116 is "no rows returned" which is fine, but other errors mean auth failed
+            console.error('[ProtectedRoute] Session validation failed:', testError);
+            if (testError.message?.includes('JWT') || testError.message?.includes('token') || testError.message?.includes('expired')) {
+              console.log('[ProtectedRoute] Session invalid (JWT error), redirecting to login');
+              await supabase.auth.signOut();
+              setIsAuthenticated(false);
+              setIsLoading(false);
+              isLoadingRef.current = false;
+              isCheckingRef.current = false;
+              return;
+            }
+          }
+        } catch (validationError: any) {
+          console.error('[ProtectedRoute] Session validation error:', validationError);
+          // If validation fails, assume session is invalid
+          if (validationError?.message?.includes('JWT') || validationError?.message?.includes('token') || validationError?.message?.includes('expired')) {
+            console.log('[ProtectedRoute] Session invalid, redirecting to login');
+            await supabase.auth.signOut();
+            setIsAuthenticated(false);
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            isCheckingRef.current = false;
+            return;
+          }
+        }
+
+        setIsAuthenticated(true);
+
+        // Check if user has a username
+        console.log('[ProtectedRoute] Checking username for user:', session.user.id);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:130',message:'Starting username check',data:{userId:session.user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        let timeoutId: NodeJS.Timeout | null = null;
+        let queryCompleted = false;
+        
+        // Add timeout to prevent hanging - reduced to 3s for faster feedback
+        timeoutId = setTimeout(() => {
+          if (!queryCompleted) {
+            console.warn('[ProtectedRoute] Username check timed out after 3s, allowing access');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:137',message:'Username check timed out',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'D'})}).catch(()=>{});
+            // #endregion
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            isCheckingRef.current = false;
+            hasCheckedRef.current = true; // Mark as checked to prevent retries
+            setNeedsUsername(false); // Assume username exists if query times out
+          }
+        }, 3000);
+        
+        try {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          queryCompleted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:151',message:'Profile query result',data:{hasProfile:!!profile,username:profile?.username,usernameType:typeof profile?.username,error:profileError?.message,errorCode:profileError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
+          // #endregion
+
+          if (profileError) {
+            console.error('[ProtectedRoute] Error checking username:', profileError);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:158',message:'Profile query error',data:{error:profileError?.message,errorCode:profileError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
+            // Don't block access if profile check fails - might be a temporary DB issue
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            isCheckingRef.current = false;
+            setNeedsUsername(false); // Allow access even if check fails
+            hasCheckedRef.current = true;
+            return;
+          }
+
+          // #region agent log
+          const usernameValue = profile?.username;
+          const usernameType = typeof usernameValue;
+          const usernameLength = usernameValue?.length;
+          const usernameTrimmed = usernameValue?.trim?.();
+          const usernameTrimmedLength = usernameTrimmed?.length;
+          const needsUsernameResult = !usernameValue || usernameTrimmedLength === 0;
+          fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:172',message:'Username check details',data:{hasProfile:!!profile,username:usernameValue,usernameType:usernameType,usernameLength:usernameLength,usernameTrimmed:usernameTrimmed,usernameTrimmedLength:usernameTrimmedLength,needsUsername:needsUsernameResult},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
+
+          console.log('[ProtectedRoute] Profile check result:', { 
+            hasProfile: !!profile, 
+            username: profile?.username,
+            usernameType: typeof profile?.username,
+            usernameLength: profile?.username?.length,
+            hasUsername: !!(profile?.username && profile.username.trim().length > 0)
+          });
+
+          // Check if username exists and is not empty/null
+          if (!profile?.username || profile.username.trim().length === 0) {
+            console.log('[ProtectedRoute] User needs username (missing or empty), setting needsUsername=true');
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:183',message:'Setting needsUsername=true',data:{username:profile?.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            setNeedsUsername(true);
+          } else {
+            console.log('[ProtectedRoute] User has username:', profile.username);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/f2529eb3-e679-4510-9711-1234f7735f6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ProtectedRoute.tsx:188',message:'Setting needsUsername=false',data:{username:profile.username},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
+            setNeedsUsername(false);
+          }
+
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          hasCheckedRef.current = true;
+        } catch (error) {
+          queryCompleted = true;
+          if (timeoutId) clearTimeout(timeoutId);
+          console.error('[ProtectedRoute] Unexpected error:', error);
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          setNeedsUsername(false); // Allow access on error
+          hasCheckedRef.current = true;
+        } finally {
+          isCheckingRef.current = false;
+        }
+      } catch (error) {
+        console.error('[ProtectedRoute] Unexpected error in checkAuthAndUsername:', error);
+        setIsLoading(false);
+        isLoadingRef.current = false;
+        setIsAuthenticated(false); // Set to false on unexpected error
+        isCheckingRef.current = false;
+      }
+    };
+
+    checkAuthAndUsername();
+
+    // Listen for page visibility changes (user returning to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isCheckingRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        const longDuration = 30 * 60 * 1000; // 30 minutes
+        
+        console.log('[ProtectedRoute] Page became visible, re-checking auth state...', { 
+          timeAway: Math.round(timeAway / 1000 / 60) + ' minutes' 
+        });
+        
+        // Always re-check when returning, but log if it was a long duration
+        if (timeAway > longDuration) {
+          console.log('[ProtectedRoute] User was away for extended period (' + Math.round(timeAway / 1000 / 60) + ' min), forcing auth re-check');
+        }
+        hasCheckedRef.current = false;
+        checkAuthAndUsername();
+      } else if (document.visibilityState === 'hidden') {
+        // Update last active time when user leaves
+        lastActiveTimeRef.current = Date.now();
+      }
+    };
+
+    // Listen for window focus (user returning to window)
+    const handleFocus = () => {
+      if (!isCheckingRef.current) {
+        const timeAway = Date.now() - lastActiveTimeRef.current;
+        const longDuration = 30 * 60 * 1000; // 30 minutes
+        
+        console.log('[ProtectedRoute] Window focused, re-checking auth state...', { 
+          timeAway: Math.round(timeAway / 1000 / 60) + ' minutes' 
+        });
+        
+        if (timeAway > longDuration) {
+          console.log('[ProtectedRoute] User was away for extended period (' + Math.round(timeAway / 1000 / 60) + ' min), forcing auth re-check');
+        }
+        hasCheckedRef.current = false;
+        checkAuthAndUsername();
+      }
+    };
+
+    // Update last active time on user activity
+    const updateLastActive = () => {
+      lastActiveTimeRef.current = Date.now();
+    };
+    
+    document.addEventListener('mousemove', updateLastActive);
+    document.addEventListener('keydown', updateLastActive);
+    document.addEventListener('click', updateLastActive);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    // Listen for auth changes - but only update state, don't trigger full re-check
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[ProtectedRoute] Auth state changed:', { event, hasSession: !!session, path: location.pathname });
+      
+      // Prevent processing if already checking
+      if (isCheckingRef.current) {
+        console.log('[ProtectedRoute] Already checking, skipping auth state change handler');
+        return;
+      }
+      
+      if (!session) {
+        console.log('[ProtectedRoute] Session lost, setting authenticated=false');
+        setIsAuthenticated(false);
+        setNeedsUsername(false);
+        setIsLoading(false);
+        isLoadingRef.current = false;
+        hasCheckedRef.current = false;
+        return;
+      }
+
+      setIsAuthenticated(true);
+
+      // Only check username if we haven't checked yet or if it's a sign in event
+      if (!hasCheckedRef.current || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        isCheckingRef.current = true;
+        console.log('[ProtectedRoute] Checking username on auth state change');
+        
+        // Add timeout to prevent hanging
+        const timeoutId = setTimeout(() => {
+          console.warn('[ProtectedRoute] Username check timed out after 5s (auth change), allowing access');
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          isCheckingRef.current = false;
+          hasCheckedRef.current = true; // Mark as checked to prevent retries
+        }, 5000);
+        
+        try {
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('username')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          clearTimeout(timeoutId); // Clear timeout if query completes
+
+          if (profileError) {
+            console.error('[ProtectedRoute] Error checking username on auth change:', profileError);
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            isCheckingRef.current = false;
+            return;
+          }
+
+          // Check if username exists and is not empty/null
+          if (!profile?.username || profile.username.trim().length === 0) {
+            console.log('[ProtectedRoute] User needs username (missing or empty, from auth change)');
+            setNeedsUsername(true);
+          } else {
+            console.log('[ProtectedRoute] User has username:', profile.username, '(from auth change)');
+            setNeedsUsername(false);
+          }
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          hasCheckedRef.current = true;
+        } catch (error) {
+          clearTimeout(timeoutId); // Clear timeout on error
+          console.error('[ProtectedRoute] Error checking username on auth change:', error);
+          setIsLoading(false);
+          isLoadingRef.current = false;
+        } finally {
+          isCheckingRef.current = false;
+        }
+      }
+    });
+
+    return () => {
+      console.log('[ProtectedRoute] Cleaning up auth listener');
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('mousemove', updateLastActive);
+      document.removeEventListener('keydown', updateLastActive);
+      document.removeEventListener('click', updateLastActive);
+    };
+  }, []); // Remove location.pathname dependency to prevent re-checks on every navigation
+
+  console.log('[ProtectedRoute] Render state:', { 
+    isLoading, 
+    isAuthenticated, 
+    needsUsername, 
+    path: location.pathname 
+  });
+
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-home-background">
         <div className="flex flex-col items-center gap-4">
@@ -21,15 +394,19 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
+    console.log('[ProtectedRoute] Not authenticated, redirecting to /auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
-  if (!profile?.username && location.pathname !== "/onboarding") {
+  if (needsUsername) {
+    console.log('[ProtectedRoute] Needs username, redirecting to /onboarding');
     return <Navigate to="/onboarding" replace />;
   }
 
+  console.log('[ProtectedRoute] All checks passed, rendering children');
   return <>{children}</>;
 };
 
 export default ProtectedRoute;
+

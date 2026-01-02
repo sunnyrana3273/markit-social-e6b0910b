@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -51,15 +50,30 @@ import {
   X as XIcon,
   Download
 } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, type Profile } from "@/contexts/AuthContext";
+import { User } from "@supabase/supabase-js";
 import { useToast } from "@/components/ui/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import SettingsModal from "@/components/SettingsModal";
 import { FileViewer } from "@/components/FileViewer";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import { moderateContent } from "@/lib/moderation";
+import { useQueryClient } from "@tanstack/react-query";
+import ReportIssueFooter from "@/components/ReportIssueFooter";
+import { UserProfileModal } from "@/components/UserProfileModal";
+
+interface Profile {
+  first_name: string | null;
+  last_name: string | null;
+  image_url: string | null;
+  email: string;
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'plus' | 'pro';
+  plan_expires_at?: string | null;
+  profile_visible_in_communities?: boolean;
+}
 
 interface Community {
   id: string;
@@ -100,49 +114,29 @@ interface Vote {
   user_id: string;
 }
 
-interface Resource {
-  id: string;
-  title: string;
-  description: string;
-  resource_url: string;
-  resource_type: string;
-  created_at: string;
-  profiles: Profile;
-}
-
-interface ActiveUser {
-  user_id: string;
-  last_seen: string;
-  profiles: Profile;
-}
 
 const CourseCommunity = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { communityId } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user, profile } = useAuth();
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [community, setCommunity] = useState<Community | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
-  const [resources, setResources] = useState<Resource[]>([]);
-  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [newDiscussionTitle, setNewDiscussionTitle] = useState("");
   const [newDiscussionContent, setNewDiscussionContent] = useState("");
   const [newDiscussionAnonymous, setNewDiscussionAnonymous] = useState(false);
   const [showNewDiscussion, setShowNewDiscussion] = useState(false);
   const [newDiscussionFile, setNewDiscussionFile] = useState<File | null>(null);
   const [isUploadingDiscussionFile, setIsUploadingDiscussionFile] = useState(false);
+  const [isModeratingDiscussion, setIsModeratingDiscussion] = useState(false);
   const [isDraggingOverDiscussion, setIsDraggingOverDiscussion] = useState(false);
   const dragCounterRef = useRef(0);
   const [previewFile, setPreviewFile] = useState<{ file: File; url: string } | null>(null);
-  const [newResourceTitle, setNewResourceTitle] = useState("");
-  const [newResourceUrl, setNewResourceUrl] = useState("");
-  const [newResourceDesc, setNewResourceDesc] = useState("");
-  const [showNewResource, setShowNewResource] = useState(false);
   const [expandedDiscussions, setExpandedDiscussions] = useState<Set<string>>(new Set());
-  const expandedDiscussionsRef = useRef<Set<string>>(new Set());
   const [replies, setReplies] = useState<Record<string, Reply[]>>({});
   const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
   const [replyContents, setReplyContents] = useState<Record<string, string>>({});
@@ -150,8 +144,8 @@ const CourseCommunity = () => {
   const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({});
   const [replyFiles, setReplyFiles] = useState<Record<string, File | null>>({});
   const [isUploadingReplyFile, setIsUploadingReplyFile] = useState<Record<string, boolean>>({});
+  const [isModeratingReply, setIsModeratingReply] = useState<Record<string, boolean>>({});
   const [expandedDiscussionId, setExpandedDiscussionId] = useState<string | null>(null);
-  const expandedDiscussionIdRef = useRef<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<{ 
     type: 'discussion' | 'reply' | null; 
     id: string | null;
@@ -160,146 +154,54 @@ const CourseCommunity = () => {
   const [discussionVotes, setDiscussionVotes] = useState<Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }>>({});
   const [replyVotes, setReplyVotes] = useState<Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }>>({});
   const [interactionCounts, setInteractionCounts] = useState<Record<string, number>>({});
-
-  // Keep refs in sync with state for use in realtime callbacks
-  useEffect(() => {
-    expandedDiscussionsRef.current = expandedDiscussions;
-  }, [expandedDiscussions]);
-
-  useEffect(() => {
-    expandedDiscussionIdRef.current = expandedDiscussionId;
-  }, [expandedDiscussionId]);
+  const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
 
   useEffect(() => {
     document.title = "MarkIt | Community";
-  }, [navigate]);
-
-  // Refactored function to fetch discussions and related data
-  const fetchDiscussionsData = useCallback(async () => {
-    if (!communityId || !user || !isMember) return;
-
-    // Fetch discussions first - show these immediately
-    // Limit to 50 for faster initial load
-    const { data: discussionsData } = await supabase
-      .from('community_discussions')
-      .select(`
-        *,
-        profiles:user_id (first_name, last_name, image_url, email)
-      `)
-      .eq('community_id', communityId)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (discussionsData) {
-      // Set discussions immediately so UI can render
-      setDiscussions(discussionsData as any);
+    const initializeUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Fetch all related data in parallel for better performance
-      if (discussionsData.length > 0) {
-        const discussionIds = discussionsData.map(d => d.id);
-        
-        // Fetch all counts/votes/interactions in parallel
-        // Don't initialize to 0 - only set when we have actual data
-        const [repliesResult, votesResult, interactionsResult] = await Promise.all([
-          // Reply counts
-          supabase
-            .from('community_discussion_replies')
-            .select('discussion_id')
-            .in('discussion_id', discussionIds),
-          // Discussion votes
-          user ? supabase
-            .from('community_discussion_votes')
-            .select('discussion_id, vote_type, user_id')
-            .in('discussion_id', discussionIds) : Promise.resolve({ data: null, error: null }),
-          // Interaction counts
-          supabase
-            .from('community_discussion_interactions')
-            .select('discussion_id')
-            .in('discussion_id', discussionIds)
-        ]);
-
-        // Process reply counts - only update if we have data, preserve existing values
-        if (repliesResult.data) {
-          setReplyCounts((prev) => {
-            const counts = { ...prev };
-            // Count replies per discussion
-            const replyCountsByDiscussion: Record<string, number> = {};
-            repliesResult.data.forEach((reply) => {
-              replyCountsByDiscussion[reply.discussion_id] = (replyCountsByDiscussion[reply.discussion_id] || 0) + 1;
-            });
-            // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
-            discussionIds.forEach(id => {
-              const newCount = replyCountsByDiscussion[id] || 0;
-              const current = prev[id];
-              if (current === undefined || newCount >= current) {
-                counts[id] = newCount;
-              }
-              // If current is higher, keep it (don't flash down)
-            });
-            return counts;
-          });
-        }
-
-              // Process votes - only set when we have data
-              if (votesResult.data && user) {
-                setDiscussionVotes((prev) => {
-                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
-                  
-                  // Initialize all discussions first
-                  discussionIds.forEach(id => {
-                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
-                  });
-                  
-                  // Count votes from scratch (don't increment on existing values)
-                  votesResult.data.forEach((vote) => {
-                    if (!votes[vote.discussion_id]) {
-                      votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
-                    }
-                    if (vote.vote_type === 'upvote') {
-                      votes[vote.discussion_id].upvotes++;
-                    } else {
-                      votes[vote.discussion_id].downvotes++;
-                    }
-                    if (vote.user_id === user.id) {
-                      votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-                    }
-                  });
-                  
-                  // Preserve existing values for discussions not in this batch (if any)
-                  Object.keys(prev).forEach(id => {
-                    if (!discussionIds.includes(id)) {
-                      votes[id] = prev[id];
-                    }
-                  });
-                  
-                  return votes;
-                });
-              }
-
-        // Process interaction counts - only update if we have data
-        if (interactionsResult.data) {
-          setInteractionCounts((prev) => {
-            const interactionCountsMap = { ...prev };
-            // Count interactions per discussion
-            const interactionCountsByDiscussion: Record<string, number> = {};
-            interactionsResult.data.forEach((interaction) => {
-              interactionCountsByDiscussion[interaction.discussion_id] = (interactionCountsByDiscussion[interaction.discussion_id] || 0) + 1;
-            });
-            // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
-            discussionIds.forEach(id => {
-              const newCount = interactionCountsByDiscussion[id] || 0;
-              const current = prev[id];
-              if (current === undefined || newCount >= current) {
-                interactionCountsMap[id] = newCount;
-              }
-              // If current is higher, keep it (don't flash down)
-            });
-            return interactionCountsMap;
-          });
-        }
+      if (!session) {
+        navigate('/auth');
+        return;
       }
-    }
-  }, [communityId, user, isMember]);
+
+      setUser(session.user);
+
+      const { data: profileData, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!profileData && !error) {
+        // No credentials exists, create one
+        const { error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email!,
+            first_name: session.user.user_metadata?.first_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+            last_name: session.user.user_metadata?.last_name || '',
+            image_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
+          });
+
+        if (!createError) {
+          // Fetch the newly created profile
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          setProfile(newProfile);
+        }
+      } else if (profileData) {
+        setProfile(profileData);
+      }
+    };
+
+    initializeUser();
+  }, [navigate]);
 
   useEffect(() => {
     if (!communityId || !user) return;
@@ -319,32 +221,30 @@ const CourseCommunity = () => {
     trackVisit();
 
     const fetchCommunityData = async () => {
-      // Fetch community and membership in parallel (they're independent)
-      const [communityResult, membershipResult] = await Promise.all([
-        supabase
+      // Fetch community
+      const { data: communityData } = await supabase
         .from('course_communities')
         .select('*')
         .eq('id', communityId)
-          .single(),
-        supabase
+        .single();
+
+      if (communityData) {
+        setCommunity(communityData);
+      }
+
+      // Check membership
+      const { data: membershipData } = await supabase
         .from('community_memberships')
         .select('*')
         .eq('community_id', communityId)
         .eq('user_id', user.id)
-          .maybeSingle()
-      ]);
+        .maybeSingle();
 
-      if (communityResult.data) {
-        setCommunity(communityResult.data);
-      }
-
-      const membershipData = membershipResult.data;
-      const isMemberNow = !!membershipData;
-      setIsMember(isMemberNow);
+      setIsMember(!!membershipData);
 
       if (membershipData) {
-        // Update presence (don't await - fire and forget for faster initial load)
-        supabase
+        // Update presence
+        await supabase
           .from('community_presence')
           .upsert({
             community_id: communityId,
@@ -352,76 +252,52 @@ const CourseCommunity = () => {
             last_seen: new Date().toISOString()
           });
 
-        // Fetch discussions immediately (don't wait for state update)
-        // Fetch discussions first - show these immediately
-        const discussionsResult = await supabase
+        // Fetch discussions
+        const { data: discussionsData } = await supabase
           .from('community_discussions')
           .select(`
             *,
-            profiles:user_id (first_name, last_name, image_url, email)
+            profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
           `)
           .eq('community_id', communityId)
-          .order('created_at', { ascending: false })
-          .limit(50); // Limit initial load for faster response
+          .order('created_at', { ascending: false });
 
-        if (discussionsResult.data) {
-          // Set discussions immediately so UI can render
-          setDiscussions(discussionsResult.data as any);
+        if (discussionsData) {
+          setDiscussions(discussionsData as any);
           
-          // Fetch all related data in parallel (non-blocking)
-          if (discussionsResult.data.length > 0) {
-            const discussionIds = discussionsResult.data.map(d => d.id);
+          // Fetch reply counts for discussions (we'll fetch full replies when expanded)
+          if (discussionsData.length > 0) {
+            const discussionIds = discussionsData.map(d => d.id);
             
-            // Fetch counts/votes/interactions in parallel (non-blocking)
-            // Don't initialize to 0 - only set when we have actual data
-            Promise.all([
-              supabase
+            // Fetch all replies and count them by discussion_id
+            const { data: repliesData } = await supabase
               .from('community_discussion_replies')
               .select('discussion_id')
-                .in('discussion_id', discussionIds),
-              user ? supabase
+              .in('discussion_id', discussionIds);
+            
+            // Count replies per discussion
+            const counts: Record<string, number> = {};
+            discussionIds.forEach(id => {
+              counts[id] = 0;
+            });
+            repliesData?.forEach((reply) => {
+              counts[reply.discussion_id] = (counts[reply.discussion_id] || 0) + 1;
+            });
+            setReplyCounts(counts);
+
+            // Fetch discussion votes
+            if (user) {
+              const { data: votesData } = await supabase
                 .from('community_discussion_votes')
                 .select('discussion_id, vote_type, user_id')
-                .in('discussion_id', discussionIds) : Promise.resolve({ data: null, error: null }),
-              supabase
-                .from('community_discussion_interactions')
-                .select('discussion_id')
-                .in('discussion_id', discussionIds)
-            ]).then(([repliesResult, votesResult, interactionsResult]) => {
-              // Process reply counts - only update if we have data, preserve existing values
-              if (repliesResult.data) {
-                setReplyCounts((prev) => {
-                  const counts = { ...prev };
-            // Count replies per discussion
-                  const replyCountsByDiscussion: Record<string, number> = {};
-                  repliesResult.data.forEach((reply) => {
-                    replyCountsByDiscussion[reply.discussion_id] = (replyCountsByDiscussion[reply.discussion_id] || 0) + 1;
-                  });
-                  // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
-            discussionIds.forEach(id => {
-                    const newCount = replyCountsByDiscussion[id] || 0;
-                    const current = prev[id];
-                    if (current === undefined || newCount >= current) {
-                      counts[id] = newCount;
-                    }
-                    // If current is higher, keep it (don't flash down)
-                  });
-                  return counts;
-                });
-              }
+                .in('discussion_id', discussionIds);
 
-              // Process votes - only set when we have data
-              if (votesResult.data && user) {
-                setDiscussionVotes((prev) => {
               const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
-                  
-                  // Initialize all discussions first
               discussionIds.forEach(id => {
                 votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
               });
 
-                  // Count votes from scratch (don't increment on existing values)
-                  votesResult.data.forEach((vote) => {
+              votesData?.forEach((vote) => {
                 if (!votes[vote.discussion_id]) {
                   votes[vote.discussion_id] = { upvotes: 0, downvotes: 0, userVote: null };
                 }
@@ -434,74 +310,26 @@ const CourseCommunity = () => {
                   votes[vote.discussion_id].userVote = vote.vote_type as 'upvote' | 'downvote';
                 }
               });
-                  
-                  // Preserve existing values for discussions not in this batch (if any)
-                  Object.keys(prev).forEach(id => {
-                    if (!discussionIds.includes(id)) {
-                      votes[id] = prev[id];
-                    }
-                  });
-                  
-                  return votes;
-                });
-              }
+              setDiscussionVotes(votes);
+            }
 
-              // Process interaction counts - only update if we have data
-              if (interactionsResult.data) {
-                setInteractionCounts((prev) => {
-                  const interactionCountsMap = { ...prev };
-                  // Count interactions per discussion
-                  const interactionCountsByDiscussion: Record<string, number> = {};
-                  interactionsResult.data.forEach((interaction) => {
-                    interactionCountsByDiscussion[interaction.discussion_id] = (interactionCountsByDiscussion[interaction.discussion_id] || 0) + 1;
-                  });
-                  // Only set if new value is higher or if we don't have a value yet (prevents flashing down)
+            // Fetch interaction counts
+            const { data: interactionData } = await supabase
+              .from('community_discussion_interactions')
+              .select('discussion_id')
+              .in('discussion_id', discussionIds);
+
+            const interactionCountsMap: Record<string, number> = {};
             discussionIds.forEach(id => {
-                    const newCount = interactionCountsByDiscussion[id] || 0;
-                    const current = prev[id];
-                    if (current === undefined || newCount >= current) {
-                      interactionCountsMap[id] = newCount;
-                    }
-                    // If current is higher, keep it (don't flash down)
-                  });
-                  return interactionCountsMap;
-                });
-              }
-            }).catch(err => {
-              console.error('Error fetching discussion metadata:', err);
+              interactionCountsMap[id] = 0;
             });
+            interactionData?.forEach((interaction) => {
+              interactionCountsMap[interaction.discussion_id] = (interactionCountsMap[interaction.discussion_id] || 0) + 1;
+            });
+            setInteractionCounts(interactionCountsMap);
           }
         }
 
-        // Fetch resources and active users in parallel (less critical, can load after)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        Promise.all([
-          supabase
-          .from('community_resources')
-          .select(`
-            *,
-            profiles:user_id (first_name, last_name, image_url, email)
-          `)
-          .eq('community_id', communityId)
-            .order('created_at', { ascending: false }),
-          supabase
-          .from('community_presence')
-          .select(`
-            user_id,
-            last_seen,
-            profiles:user_id (first_name, last_name, image_url, email)
-          `)
-          .eq('community_id', communityId)
-          .gte('last_seen', fiveMinutesAgo)
-            .neq('user_id', user.id)
-        ]).then(([resourcesResult, activeUsersResult]) => {
-          if (resourcesResult.data) {
-            setResources(resourcesResult.data as any);
-          }
-          if (activeUsersResult.data) {
-            setActiveUsers(activeUsersResult.data as any);
-        }
-        });
       }
     };
 
@@ -521,296 +349,7 @@ const CourseCommunity = () => {
     }, 60000); // Update every minute
 
     return () => clearInterval(presenceInterval);
-  }, [communityId, user]);
-
-  // Realtime subscriptions and polling with visibility detection
-  useEffect(() => {
-    if (!communityId || !user || !isMember) return;
-
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-    let pollingInterval: NodeJS.Timeout | null = null;
-    let isTabVisible = !document.hidden;
-
-    // Handle visibility change
-    const handleVisibilityChange = () => {
-      isTabVisible = !document.hidden;
-      
-      // Clear existing interval
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-        pollingInterval = null;
-      }
-
-      // Set up new interval based on visibility
-      const interval = isTabVisible ? 4000 : 15000; // 4s active, 15s inactive
-      pollingInterval = setInterval(() => {
-        fetchDiscussionsData();
-      }, interval);
-    };
-
-    // Set up Realtime channel for discussions
-    channel = supabase
-      .channel(`community-discussions-${communityId}`, {
-        config: {
-          presence: { key: user.id },
-        },
-      })
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "community_discussions",
-          filter: `community_id=eq.${communityId}`,
-        },
-        async (payload) => {
-          // Fetch profile for the new discussion
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, image_url, email')
-            .eq('id', payload.new.user_id)
-            .single();
-
-          const newDiscussion = {
-            ...payload.new,
-            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
-          } as Discussion;
-
-          setDiscussions((prev) => {
-            // Check if discussion already exists (avoid duplicates)
-            if (prev.some(d => d.id === newDiscussion.id)) {
-              return prev;
-            }
-            return [newDiscussion, ...prev];
-          });
-
-          // Update reply count (initialize to 0)
-          setReplyCounts((prev) => ({
-            ...prev,
-            [newDiscussion.id]: 0
-          }));
-
-          // Initialize votes
-          setDiscussionVotes((prev) => ({
-            ...prev,
-            [newDiscussion.id]: { upvotes: 0, downvotes: 0, userVote: null }
-          }));
-
-          // Initialize interaction count
-          setInteractionCounts((prev) => ({
-            ...prev,
-            [newDiscussion.id]: 0
-          }));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "community_discussions",
-          filter: `community_id=eq.${communityId}`,
-        },
-        async (payload) => {
-          // Fetch profile for the updated discussion
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, image_url, email')
-            .eq('id', payload.new.user_id)
-            .single();
-
-          const updatedDiscussion = {
-            ...payload.new,
-            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
-          } as Discussion;
-
-          setDiscussions((prev) =>
-            prev.map((d) => (d.id === updatedDiscussion.id ? updatedDiscussion : d))
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "community_discussions",
-          filter: `community_id=eq.${communityId}`,
-        },
-        (payload) => {
-          setDiscussions((prev) => prev.filter((d) => d.id !== payload.old.id));
-          setReplyCounts((prev) => {
-            const newCounts = { ...prev };
-            delete newCounts[payload.old.id];
-            return newCounts;
-          });
-          setDiscussionVotes((prev) => {
-            const newVotes = { ...prev };
-            delete newVotes[payload.old.id];
-            return newVotes;
-          });
-          setInteractionCounts((prev) => {
-            const newCounts = { ...prev };
-            delete newCounts[payload.old.id];
-            return newCounts;
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "community_discussion_replies",
-        },
-        async (payload) => {
-          const reply = payload.new as Reply;
-          
-          // Fetch the discussion to check community_id
-          const { data: discussionData } = await supabase
-            .from('community_discussions')
-            .select('community_id')
-            .eq('id', reply.discussion_id)
-            .single();
-          
-          if (!discussionData || discussionData.community_id !== communityId) {
-            return; // Not for this community
-          }
-
-          // Update reply count
-          setReplyCounts((prev) => ({
-            ...prev,
-            [reply.discussion_id]: (prev[reply.discussion_id] || 0) + 1
-          }));
-
-          // Fetch the full reply with profile
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('first_name, last_name, image_url, email')
-            .eq('id', reply.user_id)
-            .single();
-
-          const fullReply = {
-            ...reply,
-            profiles: profileData || { first_name: null, last_name: null, image_url: null, email: '' }
-          } as Reply & { profiles: Profile };
-
-          // Add to replies if discussion is currently expanded (using refs to avoid stale closure)
-          const isExpanded = expandedDiscussionsRef.current.has(reply.discussion_id) || expandedDiscussionIdRef.current === reply.discussion_id;
-          if (isExpanded) {
-            setReplies((prevReplies) => {
-              const existingReplies = prevReplies[reply.discussion_id] || [];
-              // Check if reply already exists
-              if (existingReplies.some(r => r.id === reply.id)) {
-                return prevReplies;
-              }
-              return {
-                ...prevReplies,
-                [reply.discussion_id]: [...existingReplies, fullReply]
-              };
-            });
-          }
-
-          // Initialize reply votes
-          setReplyVotes((prev) => ({
-            ...prev,
-            [reply.id]: { upvotes: 0, downvotes: 0, userVote: null }
-          }));
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "community_discussion_replies",
-        },
-        async (payload) => {
-          const updatedReply = payload.new as Reply;
-          
-          // Update in replies if it exists
-          setReplies((prev) => {
-            const discussionReplies = prev[updatedReply.discussion_id];
-            if (!discussionReplies) return prev;
-            
-            return {
-              ...prev,
-              [updatedReply.discussion_id]: discussionReplies.map((r) =>
-                r.id === updatedReply.id ? updatedReply : r
-              )
-            };
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "community_discussion_replies",
-        },
-        (payload) => {
-          const deletedReply = payload.old as Reply;
-          
-          // Update reply count
-          setReplyCounts((prev) => ({
-            ...prev,
-            [deletedReply.discussion_id]: Math.max((prev[deletedReply.discussion_id] || 0) - 1, 0)
-          }));
-
-          // Remove from replies
-          setReplies((prev) => {
-            const discussionReplies = prev[deletedReply.discussion_id];
-            if (!discussionReplies) return prev;
-            
-            return {
-              ...prev,
-              [deletedReply.discussion_id]: discussionReplies.filter((r) => r.id !== deletedReply.id)
-            };
-          });
-
-          // Remove reply votes
-          setReplyVotes((prev) => {
-            const newVotes = { ...prev };
-            delete newVotes[deletedReply.id];
-            return newVotes;
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "community_discussion_votes",
-        },
-        () => {
-          // Refetch votes when any vote changes
-          // Use fetchDiscussionsData which will refetch all vote data
-          fetchDiscussionsData();
-        }
-      )
-      .subscribe((status) => {
-        console.log(`[Realtime] Subscription status: ${status}`);
-      });
-
-    // Set up visibility change listener
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // Initialize polling interval based on current visibility
-    handleVisibilityChange();
-
-    // Cleanup function
-    return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
-      if (pollingInterval) {
-        clearInterval(pollingInterval);
-      }
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [communityId, user, isMember, fetchDiscussionsData]);
+  }, [communityId, user, isMember]);
 
   const handleJoinCommunity = async () => {
     if (!user || !communityId) return;
@@ -830,6 +369,8 @@ const CourseCommunity = () => {
       });
     } else {
       setIsMember(true);
+      // Invalidate joined communities cache to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['joinedCommunities', user.id] });
       toast({
         title: "Success",
         description: "Joined community successfully!"
@@ -854,11 +395,52 @@ const CourseCommunity = () => {
       });
     } else {
       setIsMember(false);
+      // Invalidate joined communities cache to trigger refetch
+      queryClient.invalidateQueries({ queryKey: ['joinedCommunities', user.id] });
       toast({
         title: "Success",
         description: "Left community successfully"
       });
       navigate('/communities');
+    }
+  };
+
+  // Handle paste events to capture images in discussion textarea
+  const handleDiscussionPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Check if the pasted item is an image
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        
+        const file = item.getAsFile();
+        if (!file) return;
+        
+        // Validate file type
+        const allowedTypes = [
+          'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'
+        ];
+        
+        if (!allowedTypes.includes(file.type)) {
+          toast({
+            title: "Error",
+            description: "Only image files (JPG, PNG, GIF, WEBP) can be pasted.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Set the file for discussion
+        setNewDiscussionFile(file);
+        toast({
+          title: "Image pasted",
+          description: "Image ready to attach. Click Post to share.",
+        });
+        return;
+      }
     }
   };
 
@@ -884,11 +466,39 @@ const CourseCommunity = () => {
       return;
     }
 
+    // Moderate content before submission (including images)
+    const combinedText = `${newDiscussionTitle} ${newDiscussionContent}`;
+    console.log('[handleCreateDiscussion] Running content moderation...');
+    setIsModeratingDiscussion(true);
+    try {
+      // Only moderate image if it's an image file
+      const imageFile = newDiscussionFile && newDiscussionFile.type.startsWith('image/') 
+        ? newDiscussionFile 
+        : null;
+      
+      const moderationResult = await moderateContent(combinedText, 'post', imageFile);
+      
+      if (moderationResult.blocked) {
+        console.log('[handleCreateDiscussion] Content blocked by moderation:', moderationResult.reason);
+        setIsModeratingDiscussion(false);
+        toast({
+          title: "Content Not Allowed",
+          description: `Your post contains inappropriate content. ${moderationResult.reason ? `Reason: ${moderationResult.reason}. ` : ''}Please revise and try again.`,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('[handleCreateDiscussion] Content moderation passed');
+    } finally {
+      setIsModeratingDiscussion(false);
+    }
+
     let attachmentUrl: string | null = null;
     let attachmentType: string | null = null;
     let attachmentName: string | null = null;
 
-    // Upload file if present
+    // Upload file if present (only after moderation passes)
     if (newDiscussionFile) {
       console.log('[handleCreateDiscussion] Uploading file:', {
         name: newDiscussionFile.name,
@@ -897,22 +507,22 @@ const CourseCommunity = () => {
       });
       setIsUploadingDiscussionFile(true);
       try {
-      const { url, error } = await uploadFile(newDiscussionFile);
-      if (error) {
+        const { url, error } = await uploadFile(newDiscussionFile);
+        if (error) {
           console.error('[handleCreateDiscussion] File upload error:', error);
-        setIsUploadingDiscussionFile(false);
-        toast({
-          title: "Error",
-          description: error.message || "Failed to upload file",
-          variant: "destructive"
-        });
-        return;
-      }
+          setIsUploadingDiscussionFile(false);
+          toast({
+            title: "Error",
+            description: error.message || "Failed to upload file",
+            variant: "destructive"
+          });
+          return;
+        }
         console.log('[handleCreateDiscussion] File uploaded successfully:', url);
-      attachmentUrl = url;
-      attachmentType = newDiscussionFile.type;
-      attachmentName = newDiscussionFile.name;
-      setIsUploadingDiscussionFile(false);
+        attachmentUrl = url;
+        attachmentType = newDiscussionFile.type;
+        attachmentName = newDiscussionFile.name;
+        setIsUploadingDiscussionFile(false);
       } catch (uploadError) {
         console.error('[handleCreateDiscussion] File upload exception:', uploadError);
         setIsUploadingDiscussionFile(false);
@@ -926,10 +536,10 @@ const CourseCommunity = () => {
     }
 
     const discussionData: any = {
-        community_id: communityId,
-        user_id: user.id,
-        title: newDiscussionTitle,
-        content: newDiscussionContent,
+      community_id: communityId,
+      user_id: user.id,
+      title: newDiscussionTitle,
+      content: newDiscussionContent,
       is_anonymous: newDiscussionAnonymous
     };
 
@@ -950,11 +560,11 @@ const CourseCommunity = () => {
       const insertResult = await supabase
         .from('community_discussions')
         .insert(discussionData)
-      .select(`
-        *,
-        profiles:user_id (first_name, last_name, image_url, email)
-      `)
-      .single();
+        .select(`
+          *,
+          profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
+        `)
+        .single();
       
       console.log('[handleCreateDiscussion] Insert result received:', {
         hasData: !!insertResult.data,
@@ -965,7 +575,7 @@ const CourseCommunity = () => {
 
       const { data: newDiscussion, error } = insertResult;
 
-    if (error) {
+      if (error) {
         console.error('[handleCreateDiscussion] Database insert error:', error);
         console.error('[handleCreateDiscussion] Error details:', {
           code: error.code,
@@ -974,11 +584,11 @@ const CourseCommunity = () => {
           hint: error.hint,
           fullError: JSON.stringify(error, null, 2)
         });
-      toast({
-        title: "Error",
-          description: error.message || "Failed to create discussion",
-        variant: "destructive"
-      });
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create post",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -986,7 +596,7 @@ const CourseCommunity = () => {
         console.error('[handleCreateDiscussion] No data returned from insert, but no error either');
         toast({
           title: "Error",
-          description: "Failed to create discussion - no data returned",
+          description: "Failed to create post - no data returned",
           variant: "destructive"
         });
         return;
@@ -1022,7 +632,7 @@ const CourseCommunity = () => {
       console.log('[handleCreateDiscussion] Form cleared and UI updated');
       toast({
         title: "Success",
-        description: "Discussion created!"
+        description: "Post created!"
       });
       console.log('[handleCreateDiscussion] Function completed successfully');
     } catch (dbError) {
@@ -1034,7 +644,7 @@ const CourseCommunity = () => {
       });
       toast({
         title: "Error",
-        description: "Failed to create discussion",
+        description: "Failed to create post",
         variant: "destructive"
       });
     }
@@ -1188,11 +798,10 @@ const CourseCommunity = () => {
       });
       setShowReplyInput(prev => ({ ...prev, [discussionId]: false }));
     } else {
-      // Expand - fetch replies immediately
+      // Expand - fetch replies
       setExpandedDiscussions(prev => new Set(prev).add(discussionId));
       
-      if (!replies[discussionId]) {
-        const repliesResult = await supabase
+      const { data: repliesData } = await supabase
         .from('community_discussion_replies')
         .select(`
           id,
@@ -1202,65 +811,26 @@ const CourseCommunity = () => {
           created_at,
           updated_at,
           is_anonymous,
-            attachment_url,
-            attachment_type,
-            attachment_name,
-          profiles:user_id (first_name, last_name, image_url, email)
+          profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
         `)
         .eq('discussion_id', discussionId)
         .order('created_at', { ascending: true });
 
-        if (repliesResult.data) {
-          setReplies(prev => ({ ...prev, [discussionId]: repliesResult.data as any }));
-          
-          // Fetch votes for replies in parallel (non-blocking)
-          const replyIds = repliesResult.data.map(r => r.id);
-          if (replyIds.length > 0 && user) {
-            supabase
-              .from('community_reply_votes')
-              .select('reply_id, vote_type, user_id')
-              .in('reply_id', replyIds)
-              .then(({ data: replyVotesData }) => {
-                if (replyVotesData) {
-                  const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
-                  replyIds.forEach(id => {
-                    votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
-                  });
-
-                  replyVotesData.forEach((vote) => {
-                    if (!votes[vote.reply_id]) {
-                      votes[vote.reply_id] = { upvotes: 0, downvotes: 0, userVote: null };
-                    }
-                    if (vote.vote_type === 'upvote') {
-                      votes[vote.reply_id].upvotes++;
-                    } else {
-                      votes[vote.reply_id].downvotes++;
-                    }
-                    if (vote.user_id === user.id) {
-                      votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
+      if (repliesData) {
+        setReplies(prev => ({ ...prev, [discussionId]: repliesData as any }));
       }
-                  });
-                  setReplyVotes(prev => ({ ...prev, ...votes }));
-                }
-              })
-              .catch(err => console.error('Failed to fetch reply votes:', err));
-          }
-        }
-      }
-      
-      // Track interaction non-blocking
-      trackInteraction(discussionId).catch(err => {
-        console.error('Failed to track interaction:', err);
-      });
     }
   };
 
   const handleDiscussionClick = async (discussionId: string) => {
     setExpandedDiscussionId(discussionId);
     
-    // Fetch replies immediately (don't wait for interaction tracking)
+    // Track interaction when expanding discussion
+    await trackInteraction(discussionId);
+    
+    // Fetch replies if not already loaded
     if (!replies[discussionId]) {
-      const repliesResult = await supabase
+      const { data: repliesData } = await supabase
         .from('community_discussion_replies')
         .select(`
           id,
@@ -1270,57 +840,15 @@ const CourseCommunity = () => {
           created_at,
           updated_at,
           is_anonymous,
-          attachment_url,
-          attachment_type,
-          attachment_name,
-          profiles:user_id (first_name, last_name, image_url, email)
+          profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
         `)
         .eq('discussion_id', discussionId)
         .order('created_at', { ascending: true });
 
-      if (repliesResult.data) {
-        // Set replies immediately so UI can render
-        setReplies(prev => ({ ...prev, [discussionId]: repliesResult.data as any }));
-        
-        // Fetch votes for replies in parallel (non-blocking)
-        const replyIds = repliesResult.data.map(r => r.id);
-        if (replyIds.length > 0 && user) {
-          supabase
-            .from('community_reply_votes')
-            .select('reply_id, vote_type, user_id')
-            .in('reply_id', replyIds)
-            .then(({ data: replyVotesData }) => {
-              if (replyVotesData) {
-                const votes: Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }> = {};
-                replyIds.forEach(id => {
-                  votes[id] = { upvotes: 0, downvotes: 0, userVote: null };
-                });
-
-                replyVotesData.forEach((vote) => {
-                  if (!votes[vote.reply_id]) {
-                    votes[vote.reply_id] = { upvotes: 0, downvotes: 0, userVote: null };
-                  }
-                  if (vote.vote_type === 'upvote') {
-                    votes[vote.reply_id].upvotes++;
-                  } else {
-                    votes[vote.reply_id].downvotes++;
-                  }
-                  if (vote.user_id === user.id) {
-                    votes[vote.reply_id].userVote = vote.vote_type as 'upvote' | 'downvote';
-      }
-                });
-                setReplyVotes(prev => ({ ...prev, ...votes }));
-              }
-            })
-            .catch(err => console.error('Failed to fetch reply votes:', err));
-        }
+      if (repliesData) {
+        setReplies(prev => ({ ...prev, [discussionId]: repliesData as any }));
       }
     }
-    
-    // Track interaction non-blocking (fire and forget)
-    trackInteraction(discussionId).catch(err => {
-      console.error('Failed to track interaction:', err);
-    });
   };
 
   const handleReplySubmit = async (discussionId: string) => {
@@ -1329,11 +857,41 @@ const CourseCommunity = () => {
     const replyFile = replyFiles[discussionId];
     if (!user || !discussionId || (!replyContent && !replyFile)) return;
 
+    // Moderate content before submission (including images)
+    const contentToModerate = replyContent || '';
+    if (contentToModerate || replyFile) {
+      console.log('[handleReplySubmit] Running content moderation...');
+      setIsModeratingReply(prev => ({ ...prev, [discussionId]: true }));
+      try {
+        // Only moderate image if it's an image file
+        const imageFile = replyFile && replyFile.type.startsWith('image/') 
+          ? replyFile 
+          : null;
+        
+        const moderationResult = await moderateContent(contentToModerate, 'reply', imageFile);
+        
+        if (moderationResult.blocked) {
+          console.log('[handleReplySubmit] Content blocked by moderation:', moderationResult.reason);
+          setIsModeratingReply(prev => ({ ...prev, [discussionId]: false }));
+          toast({
+            title: "Content Not Allowed",
+            description: `Your reply contains inappropriate content. ${moderationResult.reason ? `Reason: ${moderationResult.reason}. ` : ''}Please revise and try again.`,
+            variant: "destructive"
+          });
+          return;
+        }
+
+        console.log('[handleReplySubmit] Content moderation passed');
+      } finally {
+        setIsModeratingReply(prev => ({ ...prev, [discussionId]: false }));
+      }
+    }
+
     let attachmentUrl: string | null = null;
     let attachmentType: string | null = null;
     let attachmentName: string | null = null;
 
-    // Upload file if present
+    // Upload file if present (only after moderation passes)
     if (replyFile) {
       setIsUploadingReplyFile(prev => ({ ...prev, [discussionId]: true }));
       const { url, error } = await uploadFile(replyFile);
@@ -1391,7 +949,7 @@ const CourseCommunity = () => {
           created_at,
           updated_at,
           is_anonymous,
-          profiles:user_id (first_name, last_name, image_url, email)
+          profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
         `)
         .eq('discussion_id', discussionId)
         .order('created_at', { ascending: true });
@@ -1678,49 +1236,6 @@ const CourseCommunity = () => {
     }
   };
 
-  // Handle discussion/reply query parameters from notifications
-  useEffect(() => {
-    const discussionId = searchParams.get('discussion');
-    const replyId = searchParams.get('reply');
-    
-    if (discussionId && discussions.length > 0) {
-      // Expand the discussion
-      setExpandedDiscussions(prev => {
-        const newSet = new Set([...prev, discussionId]);
-        expandedDiscussionsRef.current = newSet;
-        return newSet;
-      });
-      
-      // Load replies if not already loaded
-      if (!replies[discussionId] || replies[discussionId].length === 0) {
-        handleDiscussionClick(discussionId);
-      }
-      
-      // Scroll to discussion after a short delay
-      setTimeout(() => {
-        const element = document.getElementById(`discussion-${discussionId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 500);
-      
-      // If reply ID is specified, scroll to that reply
-      if (replyId) {
-        setTimeout(() => {
-          const element = document.getElementById(`reply-${replyId}`);
-          if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-        }, 1000);
-      }
-      
-      // Clear query parameters
-      searchParams.delete('discussion');
-      searchParams.delete('reply');
-      setSearchParams(searchParams, { replace: true });
-    }
-  }, [searchParams, discussions, replies, setSearchParams]);
-
   if (!community) {
     return <div>Loading...</div>;
   }
@@ -1751,8 +1266,8 @@ const CourseCommunity = () => {
             </nav>
           </div>
           
-          <div className="flex items-center gap-3">
-            <NotificationDropdown />
+          <div className="flex items-center gap-2">
+            <NotificationDropdown user={user} profile={profile} />
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1771,68 +1286,67 @@ const CourseCommunity = () => {
         </div>
       </header>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid lg:grid-cols-4 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Community Header */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => navigate('/communities')}>
-                  <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <div>
-                  <h1 className="text-3xl font-bold text-home-foreground">{community.course_name}</h1>
-                  <p className="text-gray-600 dark:text-gray-400">{community.description}</p>
-                  <Badge className="mt-2">{community.course_category}</Badge>
+      <div className="w-full py-8">
+        <div className="max-w-5xl mx-auto px-4 space-y-8">
+          {/* Community Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/communities')}>
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-home-foreground">{community.course_name}</h1>
+                <p className="text-gray-600 dark:text-gray-400">{community.description}</p>
+                <Badge className="mt-2">{community.course_category}</Badge>
+              </div>
+            </div>
+            {!isMember ? (
+              <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
+                Join Community
+              </Button>
+            ) : (
+              <Button onClick={handleLeaveCommunity} variant="outline" className="border-red-500 dark:border-red-400 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                Leave Community
+              </Button>
+            )}
+          </div>
+
+          {isMember ? (
+            <>
+              {/* New Post Form */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-home-primary" />
+                  <h2 className="text-2xl font-bold text-home-foreground">Community</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    onClick={() => window.location.reload()}
+                    size="sm"
+                    variant="outline"
+                    className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    Refresh
+                  </Button>
+                  <Button 
+                    onClick={() => setShowNewDiscussion(!showNewDiscussion)}
+                    size="sm"
+                    className="bg-home-primary hover:bg-home-primary-hover text-white"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    New Post
+                  </Button>
                 </div>
               </div>
-              {!isMember ? (
-                <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
-                  Join Community
-                </Button>
-              ) : (
-                <Button onClick={handleLeaveCommunity} variant="outline" className="border-red-500 dark:border-red-400 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
-                  Leave Community
-                </Button>
-              )}
-            </div>
 
-            {isMember ? (
-              <>
-                {/* Discussions Feed */}
-                <Card className="p-6 bg-card border border-border">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="w-5 h-5 text-home-primary" />
-                      <h2 className="text-xl font-bold text-home-foreground">Discussions</h2>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        onClick={() => window.location.reload()}
-                        size="sm"
-                        variant="outline"
-                        className="border-gray-300 dark:border-border text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-accent"
-                      >
-                        <RefreshCw className="w-4 h-4 mr-1" />
-                        Load More
-                      </Button>
-                      <Button 
-                        onClick={() => setShowNewDiscussion(!showNewDiscussion)}
-                        size="sm"
-                        className="bg-home-primary hover:bg-home-primary-hover text-white"
-                      >
-                        <Plus className="w-4 h-4 mr-1" />
-                        New Discussion
-                      </Button>
-                    </div>
-                  </div>
-
-                  {showNewDiscussion && (
-                    <Card 
-                      className={`p-4 mb-4 bg-gray-50 dark:bg-accent transition-colors ${
-                        isDraggingOverDiscussion ? 'border-2 border-dashed border-home-primary bg-home-primary/5' : ''
-                      }`}
+              {showNewDiscussion && (
+                <div 
+                  className={`p-6 mb-8 bg-gray-50 dark:bg-accent rounded-lg border border-border transition-all ${
+                    isDraggingOverDiscussion ? 'border-2 border-dashed border-home-primary bg-home-primary/5' : ''
+                  } ${
+                    isModeratingDiscussion || isUploadingDiscussionFile ? 'opacity-50 pointer-events-none' : ''
+                  }`}
                       onDragEnter={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -1910,10 +1424,11 @@ const CourseCommunity = () => {
                           {/* Title and Upload Button Row */}
                           <div className="flex gap-3 mb-3">
                         <Input
-                          placeholder="Discussion title..."
+                          placeholder="Post title..."
                           value={newDiscussionTitle}
                           onChange={(e) => setNewDiscussionTitle(e.target.value)}
                           className="flex-[0.75]"
+                          disabled={isModeratingDiscussion || isUploadingDiscussionFile}
                         />
                         <TooltipProvider>
                           <Tooltip>
@@ -1930,7 +1445,7 @@ const CourseCommunity = () => {
                                   }}
                                   className="hidden"
                                   id="discussion-file-input"
-                                  disabled={!!newDiscussionFile}
+                                  disabled={!!newDiscussionFile || isModeratingDiscussion || isUploadingDiscussionFile}
                                 />
                                 <Button
                                   type="button"
@@ -1942,7 +1457,7 @@ const CourseCommunity = () => {
                                     }
                                   }}
                                   className="w-full"
-                                  disabled={!!newDiscussionFile}
+                                  disabled={!!newDiscussionFile || isModeratingDiscussion || isUploadingDiscussionFile}
                                 >
                                   <Upload className="w-4 h-4 mr-2" />
                                   {newDiscussionFile ? newDiscussionFile.name : 'Attach Files'}
@@ -1960,11 +1475,13 @@ const CourseCommunity = () => {
                         </TooltipProvider>
                       </div>
                           <Textarea
-                            placeholder="What would you like to discuss?"
+                            placeholder="What would you like to discuss? (Paste images to attach)"
                             value={newDiscussionContent}
                             onChange={(e) => setNewDiscussionContent(e.target.value)}
+                            onPaste={handleDiscussionPaste}
                             className="mb-3"
                             rows={4}
+                            disabled={isModeratingDiscussion || isUploadingDiscussionFile}
                           />
                       {newDiscussionFile && (
                         <div className="mb-3 flex items-center gap-2 p-2 bg-background rounded border cursor-pointer hover:bg-muted transition-colors group"
@@ -1999,6 +1516,7 @@ const CourseCommunity = () => {
                               id="anonymous-discussion"
                               checked={newDiscussionAnonymous}
                               onCheckedChange={setNewDiscussionAnonymous}
+                              disabled={isModeratingDiscussion || isUploadingDiscussionFile}
                             />
                             <Label 
                               htmlFor="anonymous-discussion" 
@@ -2012,11 +1530,11 @@ const CourseCommunity = () => {
                               onClick={handleCreateDiscussion}
                               size="sm"
                               className="bg-home-primary hover:bg-home-primary-hover text-white shine-button relative overflow-hidden"
-                              disabled={isUploadingDiscussionFile}
+                              disabled={isUploadingDiscussionFile || isModeratingDiscussion}
                             >
                               <span className="relative z-10 flex items-center">
                                 <Send className="w-4 h-4 mr-1" />
-                                {isUploadingDiscussionFile ? 'Uploading...' : 'Post'}
+                                {isModeratingDiscussion ? 'Checking...' : isUploadingDiscussionFile ? 'Uploading...' : 'Post'}
                               </span>
                             </Button>
                             <Button 
@@ -2039,28 +1557,40 @@ const CourseCommunity = () => {
                           </div>
                         </>
                       )}
-                    </Card>
-                  )}
+                </div>
+              )}
 
-                  <div className="space-y-4">
-                    {discussions.length === 0 ? (
-                      <p className="text-center py-8 text-gray-600 dark:text-gray-400">No discussions yet. Start one!</p>
-                    ) : (
-                      discussions.map((discussion) => {
-                        const isExpanded = expandedDiscussions.has(discussion.id);
-                        const discussionReplies = replies[discussion.id] || [];
-                        const replyCount = replyCounts[discussion.id] || 0;
-                        const showReply = showReplyInput[discussion.id];
+              {/* Discussions Feed */}
+              <div className="space-y-6">
+                {discussions.length === 0 ? (
+                  <div className="text-center py-16">
+                    <MessageSquare className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
+                    <p className="text-xl text-gray-600 dark:text-gray-400">No posts yet. Start one!</p>
+                  </div>
+                ) : (
+                  discussions.map((discussion) => {
+                    const isExpanded = expandedDiscussions.has(discussion.id);
+                    const discussionReplies = replies[discussion.id] || [];
+                    const replyCount = replyCounts[discussion.id] || 0;
+                    const showReply = showReplyInput[discussion.id];
 
-                        return (
-                          <Card 
-                            key={discussion.id} 
-                            className="p-4 hover:bg-accent transition-colors border border-border cursor-pointer"
-                            onClick={() => handleDiscussionClick(discussion.id)}
-                          >
+                    return (
+                      <div 
+                        key={discussion.id} 
+                        className="p-6 bg-card rounded-lg border border-border hover:border-home-primary/50 transition-all cursor-pointer"
+                        onClick={() => handleDiscussionClick(discussion.id)}
+                      >
                             <div className="flex gap-3">
                               {!discussion.is_anonymous ? (
-                                <Avatar className="w-10 h-10">
+                                <Avatar 
+                                  className={`w-10 h-10 ${discussion.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:ring-2 hover:ring-home-primary/50' : ''} transition-all`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (discussion.profiles?.profile_visible_in_communities !== false) {
+                                      setSelectedProfileUserId(discussion.user_id);
+                                    }
+                                  }}
+                                >
                                   <AvatarImage src={discussion.profiles?.image_url || ''} />
                                   <AvatarFallback className="bg-home-primary text-white text-sm">
                                     {getUserInitials(discussion.profiles)}
@@ -2074,7 +1604,15 @@ const CourseCommunity = () => {
                               <div className="flex-1">
                                 <div className="flex items-center justify-between mb-1">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-home-foreground">
+                                    <span 
+                                      className={`font-semibold text-home-foreground ${!discussion.is_anonymous && discussion.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:text-home-primary transition-colors' : ''}`}
+                                      onClick={(e) => {
+                                        if (!discussion.is_anonymous && discussion.profiles?.profile_visible_in_communities !== false) {
+                                          e.stopPropagation();
+                                          setSelectedProfileUserId(discussion.user_id);
+                                        }
+                                      }}
+                                    >
                                       {discussion.is_anonymous ? 'Anonymous' : `${discussion.profiles?.first_name} ${discussion.profiles?.last_name}`}
                                     </span>
                                     <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -2187,7 +1725,7 @@ const CourseCommunity = () => {
                                           </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>Upvote useful posts to add them to shared resources</p>
+                                          <p>Upvote useful posts</p>
                                         </TooltipContent>
                                       </Tooltip>
                                       <Tooltip>
@@ -2223,13 +1761,16 @@ const CourseCommunity = () => {
 
                                 {/* Reply Input */}
                                 {showReply && (
-                                  <div className="mt-3 pt-3 border-t border-border" onClick={(e) => e.stopPropagation()}>
+                                  <div className={`mt-3 pt-3 border-t border-border transition-opacity ${
+                                    isModeratingReply[discussion.id] || isUploadingReplyFile[discussion.id] ? 'opacity-50 pointer-events-none' : ''
+                                  }`} onClick={(e) => e.stopPropagation()}>
                                     <Textarea
                                       placeholder="Write a reply..."
                                       value={replyContents[discussion.id] || ''}
                                       onChange={(e) => setReplyContents(prev => ({ ...prev, [discussion.id]: e.target.value }))}
                                       className="mb-2"
                                       rows={3}
+                                      disabled={isModeratingReply[discussion.id] || isUploadingReplyFile[discussion.id]}
                                     />
                                     {/* File Upload */}
                                     <div className="mb-2">
@@ -2245,6 +1786,7 @@ const CourseCommunity = () => {
                                           }}
                                           className="hidden"
                                           id={`reply-file-input-${discussion.id}`}
+                                          disabled={isModeratingReply[discussion.id] || isUploadingReplyFile[discussion.id]}
                                         />
                                         <Button
                                           type="button"
@@ -2252,6 +1794,7 @@ const CourseCommunity = () => {
                                           size="sm"
                                           onClick={() => document.getElementById(`reply-file-input-${discussion.id}`)?.click()}
                                           className="w-full"
+                                          disabled={isModeratingReply[discussion.id] || isUploadingReplyFile[discussion.id]}
                                         >
                                           <Upload className="w-4 h-4 mr-2" />
                                           {replyFiles[discussion.id] ? replyFiles[discussion.id]?.name : 'Attach File'}
@@ -2294,10 +1837,10 @@ const CourseCommunity = () => {
                                         }}
                                         size="sm"
                                         className="bg-home-primary hover:bg-home-primary-hover text-white"
-                                        disabled={(!replyContents[discussion.id]?.trim() && !replyFiles[discussion.id]) || isUploadingReplyFile[discussion.id]}
+                                        disabled={(!replyContents[discussion.id]?.trim() && !replyFiles[discussion.id]) || isUploadingReplyFile[discussion.id] || isModeratingReply[discussion.id]}
                                       >
                                         <Send className="w-4 h-4 mr-1" />
-                                        {isUploadingReplyFile[discussion.id] ? 'Uploading...' : 'Post Reply'}
+                                        {isModeratingReply[discussion.id] ? 'Checking...' : isUploadingReplyFile[discussion.id] ? 'Uploading...' : 'Post Reply'}
                                       </Button>
                                       <Button
                                         onClick={(e) => {
@@ -2322,7 +1865,15 @@ const CourseCommunity = () => {
                                     {discussionReplies.map((reply) => (
                                       <div key={reply.id} className="flex gap-3 pl-4 border-l-2 border-home-primary/20">
                                         {reply.is_anonymous !== true ? (
-                                          <Avatar className="w-8 h-8">
+                                          <Avatar 
+                                            className={`w-8 h-8 ${reply.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:ring-2 hover:ring-home-primary/50' : ''} transition-all`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (reply.profiles?.profile_visible_in_communities !== false) {
+                                                setSelectedProfileUserId(reply.user_id);
+                                              }
+                                            }}
+                                          >
                                             <AvatarImage src={reply.profiles?.image_url || ''} />
                                             <AvatarFallback className="bg-home-primary text-white text-xs">
                                               {getUserInitials(reply.profiles)}
@@ -2336,7 +1887,15 @@ const CourseCommunity = () => {
                                         <div className="flex-1">
                                           <div className="flex items-center justify-between mb-1">
                                             <div className="flex items-center gap-2">
-                                              <span className="text-sm font-semibold text-home-foreground">
+                                              <span 
+                                                className={`text-sm font-semibold text-home-foreground ${reply.is_anonymous !== true && reply.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:text-home-primary transition-colors' : ''}`}
+                                                onClick={(e) => {
+                                                  if (reply.is_anonymous !== true && reply.profiles?.profile_visible_in_communities !== false) {
+                                                    e.stopPropagation();
+                                                    setSelectedProfileUserId(reply.user_id);
+                                                  }
+                                                }}
+                                              >
                                                 {reply.is_anonymous === true ? 'Anonymous' : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`}
                                               </span>
                                               <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -2347,7 +1906,10 @@ const CourseCommunity = () => {
                                               <Button
                                                 variant="ghost"
                                                 size="sm"
-                                                onClick={() => setDeleteDialogOpen({ type: 'reply', id: reply.id, discussionId: discussion.id })}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setDeleteDialogOpen({ type: 'reply', id: reply.id, discussionId: discussion.id });
+                                                }}
                                                 className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 h-6 px-2"
                                               >
                                                 <Trash2 className="w-3 h-3" />
@@ -2430,162 +1992,35 @@ const CourseCommunity = () => {
                                 )}
                               </div>
                             </div>
-                          </Card>
-                        );
-                      })
-                    )}
-                  </div>
-                </Card>
-
-                {/* Shared Resources */}
-                <Card className="p-6 bg-card border border-border">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-5 h-5 text-home-primary" />
-                      <h2 className="text-xl font-bold text-home-foreground">Shared Resources</h2>
-                    </div>
-                    <Button 
-                      onClick={() => setShowNewResource(!showNewResource)}
-                      size="sm"
-                      className="bg-home-primary hover:bg-home-primary-hover text-white"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Resource
-                    </Button>
-                  </div>
-
-                  {showNewResource && (
-                    <Card className="p-4 mb-4 bg-gray-50 dark:bg-accent">
-                      <Input
-                        placeholder="Resource title..."
-                        value={newResourceTitle}
-                        onChange={(e) => setNewResourceTitle(e.target.value)}
-                        className="mb-3"
-                      />
-                      <Input
-                        placeholder="Resource URL..."
-                        value={newResourceUrl}
-                        onChange={(e) => setNewResourceUrl(e.target.value)}
-                        className="mb-3"
-                      />
-                      <Textarea
-                        placeholder="Description (optional)..."
-                        value={newResourceDesc}
-                        onChange={(e) => setNewResourceDesc(e.target.value)}
-                        className="mb-3"
-                        rows={2}
-                      />
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={handleAddResource}
-                          size="sm"
-                          className="bg-home-primary hover:bg-home-primary-hover text-white"
-                        >
-                          Add
-                        </Button>
-                        <Button 
-                          onClick={() => setShowNewResource(false)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Cancel
-                        </Button>
                       </div>
-                    </Card>
-                  )}
-
-                  <div className="space-y-3">
-                    {resources.length === 0 ? (
-                      <p className="text-center py-8 text-gray-600 dark:text-gray-400">No resources yet. Add one!</p>
-                    ) : (
-                      resources.map((resource) => (
-                        <Card key={resource.id} className="p-4 hover:bg-accent transition-colors border border-border">
-                          <div className="flex gap-3">
-                            <LinkIcon className="w-5 h-5 text-home-primary flex-shrink-0 mt-1" />
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-home-foreground mb-1">{resource.title}</h3>
-                              {resource.description && (
-                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{resource.description}</p>
-                              )}
-                              <a 
-                                href={resource.resource_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-home-primary hover:underline"
-                              >
-                                {resource.resource_url}
-                              </a>
-                              <div className="flex items-center gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                <span>
-                                  Added by {resource.profiles?.first_name} {resource.profiles?.last_name}
-                                </span>
-                                <span>•</span>
-                                <span>
-                                  {formatDistanceToNow(new Date(resource.created_at), { addSuffix: true })}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </Card>
-                      ))
-                    )}
-                  </div>
-                </Card>
-              </>
-            ) : (
-              <Card className="p-12 text-center bg-card border border-border">
-                <Users className="w-16 h-16 text-home-primary mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-home-foreground mb-2">Join this community</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">Join to participate in discussions and access shared resources</p>
-                <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
-                  Join Community
-                </Button>
-              </Card>
-            )}
-          </div>
-
-          {/* Sidebar - Active Users */}
-          <div className="space-y-6">
-            <Card className="p-6 bg-card border border-border">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="w-5 h-5 text-home-primary" />
-                <h3 className="font-semibold text-home-foreground">Studying Now</h3>
-                <Badge variant="secondary">{activeUsers.length}</Badge>
-              </div>
-
-              <div className="space-y-3">
-                {activeUsers.length === 0 ? (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-4">No one is studying right now</p>
-                ) : (
-                  activeUsers.map((activeUser) => (
-                    <div key={activeUser.user_id} className="flex items-center gap-3">
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={activeUser.profiles?.image_url || ''} />
-                        <AvatarFallback className="bg-home-primary text-white text-xs">
-                          {getUserInitials(activeUser.profiles)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-home-foreground truncate">
-                          {activeUser.profiles?.first_name} {activeUser.profiles?.last_name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Active {formatDistanceToNow(new Date(activeUser.last_seen), { addSuffix: true })}
-                        </p>
-                      </div>
-                      <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0" />
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
-            </Card>
-          </div>
+            </>
+          ) : (
+            <div className="p-16 text-center bg-card rounded-lg border border-border">
+              <Users className="w-16 h-16 text-home-primary mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-home-foreground mb-2">Join this community</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">Join to participate in community discussions</p>
+              <Button onClick={handleJoinCommunity} className="bg-home-primary hover:bg-home-primary-hover text-white">
+                Join Community
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
+      />
+
+      <UserProfileModal
+        isOpen={selectedProfileUserId !== null}
+        onClose={() => setSelectedProfileUserId(null)}
+        userId={selectedProfileUserId || ""}
+        currentUserId={user?.id || null}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -2640,7 +2075,14 @@ const CourseCommunity = () => {
                       <DialogTitle className="text-2xl mb-2">{discussion.title}</DialogTitle>
                       <div className="flex items-center gap-3 mt-2">
                         {!discussion.is_anonymous ? (
-                          <Avatar className="w-10 h-10">
+                          <Avatar 
+                            className={`w-10 h-10 ${discussion.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:ring-2 hover:ring-home-primary/50' : ''} transition-all`}
+                            onClick={() => {
+                              if (discussion.profiles?.profile_visible_in_communities !== false) {
+                                setSelectedProfileUserId(discussion.user_id);
+                              }
+                            }}
+                          >
                             <AvatarImage src={discussion.profiles?.image_url || ''} />
                             <AvatarFallback className="bg-home-primary text-white text-sm">
                               {getUserInitials(discussion.profiles)}
@@ -2652,7 +2094,14 @@ const CourseCommunity = () => {
                           </Avatar>
                         )}
                         <div>
-                          <p className="font-semibold text-home-foreground">
+                          <p 
+                            className={`font-semibold text-home-foreground ${!discussion.is_anonymous && discussion.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:text-home-primary transition-colors' : ''}`}
+                            onClick={() => {
+                              if (!discussion.is_anonymous && discussion.profiles?.profile_visible_in_communities !== false) {
+                                setSelectedProfileUserId(discussion.user_id);
+                              }
+                            }}
+                          >
                             {discussion.is_anonymous ? 'Anonymous' : `${discussion.profiles?.first_name} ${discussion.profiles?.last_name}`}
                           </p>
                           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -2894,7 +2343,15 @@ const CourseCommunity = () => {
                         discussionReplies.map((reply) => (
                           <div key={reply.id} className="flex gap-3 p-4 bg-gray-50 dark:bg-accent rounded-lg">
                             {reply.is_anonymous !== true ? (
-                              <Avatar className="w-10 h-10">
+                              <Avatar 
+                                className={`w-10 h-10 ${reply.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:ring-2 hover:ring-home-primary/50' : ''} transition-all`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (reply.profiles?.profile_visible_in_communities !== false) {
+                                    setSelectedProfileUserId(reply.user_id);
+                                  }
+                                }}
+                              >
                                 <AvatarImage src={reply.profiles?.image_url || ''} />
                                 <AvatarFallback className="bg-home-primary text-white text-sm">
                                   {getUserInitials(reply.profiles)}
@@ -2908,7 +2365,15 @@ const CourseCommunity = () => {
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-home-foreground">
+                                  <span 
+                                    className={`font-semibold text-home-foreground ${reply.is_anonymous !== true && reply.profiles?.profile_visible_in_communities !== false ? 'cursor-pointer hover:text-home-primary transition-colors' : ''}`}
+                                    onClick={(e) => {
+                                      if (reply.is_anonymous !== true && reply.profiles?.profile_visible_in_communities !== false) {
+                                        e.stopPropagation();
+                                        setSelectedProfileUserId(reply.user_id);
+                                      }
+                                    }}
+                                  >
                                     {reply.is_anonymous === true ? 'Anonymous' : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`}
                                   </span>
                                   <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -3094,6 +2559,7 @@ const CourseCommunity = () => {
           </DialogContent>
         </Dialog>
       )}
+      <ReportIssueFooter />
     </div>
   );
 };

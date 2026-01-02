@@ -15,6 +15,7 @@ export default {
     extend: {
       fontFamily: {
         'homemade': ['Homemade Apple', 'cursive'],
+        'cedarville': ['Cedarville Cursive', 'cursive'],
         'lexend': ['Lexend Deca', 'sans-serif'],
       },
       scale: {

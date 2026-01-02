@@ -15,17 +15,26 @@ import {
   XCircle,
   Loader2,
   MessageSquare,
-  ThumbsUp,
   Reply,
   Phone,
-  ArrowRight,
+  TrendingUp,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { User } from "@supabase/supabase-js";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface NotificationDropdownProps {
+  user: User | null;
+  profile: {
+    first_name: string | null;
+    last_name: string | null;
+    image_url: string | null;
+    email: string;
+  } | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface FriendRequest {
@@ -41,87 +50,50 @@ interface FriendRequest {
   };
 }
 
-interface BaseNotification {
+interface DatabaseNotification {
   id: string;
-  type: 'message' | 'discussion_vote' | 'discussion_reply' | 'reply_vote' | 'reply_reply' | 'voice_call' | 'friend_request' | 'test';
+  type: 'message' | 'discussion_reply' | 'call' | 'post_engagement';
+  title: string;
+  message: string;
+  metadata: {
+    sender_id?: string;
+    sender_name?: string;
+    message_id?: string;
+    replier_id?: string;
+    replier_name?: string;
+    discussion_id?: string;
+    reply_id?: string;
+    discussion_title?: string;
+    caller_id?: string;
+    caller_name?: string;
+    new_likes?: number;
+    new_interactions?: number;
+    community_id?: string;
+  };
+  read_at: string | null;
+  created_at: string;
+}
+
+interface TestNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
   timestamp: string;
-  read: boolean;
 }
 
-interface MessageNotification extends BaseNotification {
-  type: 'message';
-  senderId: string;
-  senderName: string;
-  senderAvatar: string | null;
-  messagePreview: string;
-  friendId: string;
-}
-
-interface DiscussionNotification extends BaseNotification {
-  type: 'discussion_vote' | 'discussion_reply';
-  discussionId: string;
-  communityId: string;
-  discussionTitle: string;
-  actorId: string;
-  actorName: string;
-  actorAvatar: string | null;
-}
-
-interface ReplyNotification extends BaseNotification {
-  type: 'reply_vote' | 'reply_reply';
-  replyId: string;
-  discussionId: string;
-  communityId: string;
-  discussionTitle: string;
-  actorId: string;
-  actorName: string;
-  actorAvatar: string | null;
-}
-
-interface VoiceCallNotification extends BaseNotification {
-  type: 'voice_call';
-  callerId: string;
-  callerName: string;
-  callerAvatar: string | null;
-}
-
-interface FriendRequestNotification extends BaseNotification {
-  type: 'friend_request';
-  request: FriendRequest;
-}
-
-type Notification = MessageNotification | DiscussionNotification | ReplyNotification | VoiceCallNotification | FriendRequestNotification | BaseNotification;
-
-const NotificationDropdown = ({}: NotificationDropdownProps) => {
-  const { user, profile } = useAuth();
+const NotificationDropdown = ({ user, profile, open, onOpenChange }: NotificationDropdownProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const location = useLocation();
-  
+  const queryClient = useQueryClient();
   const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [pastNotifications, setPastNotifications] = useState<Notification[]>([]);
+  const [testNotifications, setTestNotifications] = useState<TestNotification[]>([]);
+  const [databaseNotifications, setDatabaseNotifications] = useState<DatabaseNotification[]>([]);
+  const [pastNotifications, setPastNotifications] = useState<TestNotification[]>([]);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"recent" | "past">("recent");
-  
-  // Track if user is currently in chat or study session
-  const isInChatRef = useRef(false);
-  const isInStudySessionRef = useRef(false);
-  const currentChatFriendIdRef = useRef<string | null>(null);
-  
-  // Track processed notification IDs to avoid duplicates
-  const processedNotificationIdsRef = useRef<Set<string>>(new Set());
-
-  // Check if user is in chat or study session based on route
-  useEffect(() => {
-    const path = location.pathname;
-    isInChatRef.current = path.includes('/friends') && path.includes('chat');
-    isInStudySessionRef.current = path.includes('/session/') || path.includes('/study-session');
-    
-    // Extract chat friend ID from URL if present
-    const chatMatch = path.match(/\/friends\/chat\/([^/]+)/);
-    currentChatFriendIdRef.current = chatMatch ? chatMatch[1] : null;
-  }, [location.pathname]);
+  const [previousUnreadCount, setPreviousUnreadCount] = useState<number>(-1); // -1 means not initialized yet
+  const originalTitleRef = useRef<string>(document.title);
 
   const getInitials = (firstName?: string | null, lastName?: string | null, email?: string) => {
     if (firstName && lastName) {
@@ -142,8 +114,7 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
       const stored = localStorage.getItem(`pastNotifications_${user.id}`);
       if (stored) {
         try {
-          const parsed = JSON.parse(stored);
-          setPastNotifications(parsed);
+          setPastNotifications(JSON.parse(stored));
         } catch (e) {
           console.error('Error loading past notifications:', e);
         }
@@ -159,426 +130,126 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
   }, [pastNotifications, user]);
 
   // Fetch incoming friend requests
-  useEffect(() => {
+  const fetchIncomingRequests = useCallback(async () => {
     if (!user) return;
 
-    const fetchIncomingRequests = async () => {
-      const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
-        .from('friends')
-        .select('user_id, created_at')
-        .eq('friend_id', user.id)
-        .eq('status', 'pending');
+    const { data: incomingFriendsData, error: incomingFriendsError } = await supabase
+      .from('friends')
+      .select('user_id, created_at')
+      .eq('friend_id', user.id)
+      .eq('status', 'pending');
 
-      if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
-        const userIds = incomingFriendsData.map(req => req.user_id);
-        const { data: incomingProfilesData } = await supabase
-          .from('profiles')
-          .select('id, username, first_name, last_name, image_url, email')
-          .in('id', userIds);
+    if (incomingFriendsData && !incomingFriendsError && incomingFriendsData.length > 0) {
+      const userIds = incomingFriendsData.map(req => req.user_id);
+      const { data: incomingProfilesData } = await supabase
+        .from('profiles')
+        .select('id, username, first_name, last_name, image_url, email')
+        .in('id', userIds);
 
-        if (incomingProfilesData) {
-          const incomingRequests = incomingFriendsData.map(friends => {
-            const profile = incomingProfilesData.find(p => p.id === friends.user_id);
-            return { ...friends, profiles: profile };
-          });
-          setIncomingRequests(incomingRequests);
-        }
+      if (incomingProfilesData) {
+        const incomingRequests = incomingFriendsData.map(friends => {
+          const profile = incomingProfilesData.find(p => p.id === friends.user_id);
+          return { ...friends, profiles: profile };
+        });
+        setIncomingRequests(incomingRequests);
       }
-    };
+    } else {
+      setIncomingRequests([]);
+    }
+  }, [user]);
 
+  useEffect(() => {
     fetchIncomingRequests();
-    const interval = setInterval(fetchIncomingRequests, 30000);
+    const interval = setInterval(fetchIncomingRequests, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
-  }, [user]);
+  }, [fetchIncomingRequests]);
 
-  // Real-time subscription for messages
+  // Fetch database notifications
   useEffect(() => {
     if (!user) return;
 
-    const channel = supabase
-      .channel('notifications-messages')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'friend_messages',
-          filter: `receiver_id=eq.${user.id}`,
-        },
-        async (payload) => {
-          const message = payload.new as any;
-          
-          // Don't notify if user is in chat with this friend
-          if (isInChatRef.current && currentChatFriendIdRef.current === message.sender_id) {
-            return;
-          }
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-          // Check if already processed
-          const notifId = `msg-${message.id}`;
-          if (processedNotificationIdsRef.current.has(notifId)) {
-            return;
-          }
-          processedNotificationIdsRef.current.add(notifId);
-
-          // Fetch sender profile
-          const { data: senderProfile } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .eq('id', message.sender_id)
-            .single();
-
-          if (senderProfile) {
-            const notification: MessageNotification = {
-              id: notifId,
-              type: 'message',
-              timestamp: message.created_at,
-              read: false,
-              senderId: message.sender_id,
-              senderName: senderProfile.username || senderProfile.first_name || 'Someone',
-              senderAvatar: senderProfile.image_url,
-              messagePreview: message.message.substring(0, 50) + (message.message.length > 50 ? '...' : ''),
-              friendId: message.sender_id,
-            };
-
-            setNotifications(prev => [notification, ...prev]);
-            
-            toast({
-              title: "New Message",
-              description: `${notification.senderName}: ${notification.messagePreview}`,
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, toast]);
-
-  // Real-time subscription for discussion votes
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('notifications-discussion-votes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'community_discussion_votes',
-        },
-        async (payload) => {
-          const vote = payload.new as any;
-          
-          // Only notify if vote is for user's discussion
-          const { data: discussion } = await supabase
-            .from('community_discussions')
-            .select('id, user_id, title, community_id')
-            .eq('id', vote.discussion_id)
-            .single();
-
-          if (!discussion || discussion.user_id !== user.id || vote.user_id === user.id) {
-            return;
-          }
-
-          const notifId = `vote-disc-${vote.id}`;
-          if (processedNotificationIdsRef.current.has(notifId)) {
-            return;
-          }
-          processedNotificationIdsRef.current.add(notifId);
-
-          // Fetch voter profile
-          const { data: voterProfile } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .eq('id', vote.user_id)
-            .single();
-
-          if (voterProfile) {
-            const notification: DiscussionNotification = {
-              id: notifId,
-              type: 'discussion_vote',
-              timestamp: new Date().toISOString(),
-              read: false,
-              discussionId: discussion.id,
-              communityId: discussion.community_id,
-              discussionTitle: discussion.title,
-              actorId: vote.user_id,
-              actorName: voterProfile.username || voterProfile.first_name || 'Someone',
-              actorAvatar: voterProfile.image_url,
-            };
-
-            setNotifications(prev => [notification, ...prev]);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  // Real-time subscription for discussion replies
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('notifications-discussion-replies')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'community_discussion_replies',
-        },
-        async (payload) => {
-          const reply = payload.new as any;
-          
-          // Only notify if reply is to user's discussion
-          const { data: discussion } = await supabase
-            .from('community_discussions')
-            .select('id, user_id, title, community_id')
-            .eq('id', reply.discussion_id)
-            .single();
-
-          if (!discussion || discussion.user_id !== user.id || reply.user_id === user.id) {
-            return;
-          }
-
-          const notifId = `reply-disc-${reply.id}`;
-          if (processedNotificationIdsRef.current.has(notifId)) {
-            return;
-          }
-          processedNotificationIdsRef.current.add(notifId);
-
-          // Fetch replier profile
-          const { data: replierProfile } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .eq('id', reply.user_id)
-            .single();
-
-          if (replierProfile) {
-            const notification: DiscussionNotification = {
-              id: notifId,
-              type: 'discussion_reply',
-              timestamp: reply.created_at,
-              read: false,
-              discussionId: discussion.id,
-              communityId: discussion.community_id,
-              discussionTitle: discussion.title,
-              actorId: reply.user_id,
-              actorName: replierProfile.username || replierProfile.first_name || 'Someone',
-              actorAvatar: replierProfile.image_url,
-            };
-
-            setNotifications(prev => [notification, ...prev]);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  // Real-time subscription for reply votes
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('notifications-reply-votes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'community_discussion_votes',
-        },
-        async (payload) => {
-          const vote = payload.new as any;
-          
-          // Only notify if vote is for user's reply
-          if (!vote.reply_id) return;
-
-          const { data: reply } = await supabase
-            .from('community_discussion_replies')
-            .select('id, user_id, discussion_id')
-            .eq('id', vote.reply_id)
-            .single();
-
-          if (!reply || reply.user_id !== user.id || vote.user_id === user.id) {
-            return;
-          }
-
-          const { data: discussion } = await supabase
-            .from('community_discussions')
-            .select('id, title, community_id')
-            .eq('id', reply.discussion_id)
-            .single();
-
-          if (!discussion) return;
-
-          const notifId = `vote-reply-${vote.id}`;
-          if (processedNotificationIdsRef.current.has(notifId)) {
-            return;
-          }
-          processedNotificationIdsRef.current.add(notifId);
-
-          // Fetch voter profile
-          const { data: voterProfile } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .eq('id', vote.user_id)
-            .single();
-
-          if (voterProfile) {
-            const notification: ReplyNotification = {
-              id: notifId,
-              type: 'reply_vote',
-              timestamp: new Date().toISOString(),
-              read: false,
-              replyId: reply.id,
-              discussionId: discussion.id,
-              communityId: discussion.community_id,
-              discussionTitle: discussion.title,
-              actorId: vote.user_id,
-              actorName: voterProfile.username || voterProfile.first_name || 'Someone',
-              actorAvatar: voterProfile.image_url,
-            };
-
-            setNotifications(prev => [notification, ...prev]);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  // Real-time subscription for replies to replies
-  useEffect(() => {
-    if (!user) return;
-
-    const channel = supabase
-      .channel('notifications-reply-replies')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'community_discussion_replies',
-        },
-        async (payload) => {
-          const reply = payload.new as any;
-          
-          // Only notify if reply is to user's reply
-          if (!reply.parent_reply_id) return;
-
-          const { data: parentReply } = await supabase
-            .from('community_discussion_replies')
-            .select('id, user_id, discussion_id')
-            .eq('id', reply.parent_reply_id)
-            .single();
-
-          if (!parentReply || parentReply.user_id !== user.id || reply.user_id === user.id) {
-            return;
-          }
-
-          const { data: discussion } = await supabase
-            .from('community_discussions')
-            .select('id, title, community_id')
-            .eq('id', parentReply.discussion_id)
-            .single();
-
-          if (!discussion) return;
-
-          const notifId = `reply-reply-${reply.id}`;
-          if (processedNotificationIdsRef.current.has(notifId)) {
-            return;
-          }
-          processedNotificationIdsRef.current.add(notifId);
-
-          // Fetch replier profile
-          const { data: replierProfile } = await supabase
-            .from('profiles')
-            .select('id, username, first_name, last_name, image_url, email')
-            .eq('id', reply.user_id)
-            .single();
-
-          if (replierProfile) {
-            const notification: ReplyNotification = {
-              id: notifId,
-              type: 'reply_reply',
-              timestamp: reply.created_at,
-              read: false,
-              replyId: parentReply.id,
-              discussionId: discussion.id,
-              communityId: discussion.community_id,
-              discussionTitle: discussion.title,
-              actorId: reply.user_id,
-              actorName: replierProfile.username || replierProfile.first_name || 'Someone',
-              actorAvatar: replierProfile.image_url,
-            };
-
-            setNotifications(prev => [notification, ...prev]);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  // Listen for incoming voice calls (via window event or custom event)
-  useEffect(() => {
-    if (!user) return;
-
-    const handleIncomingCall = (event: CustomEvent) => {
-      const callData = event.detail as { callerId: string; callerName: string; callerAvatar?: string | null };
-      
-      // Don't notify if user is in study session
-      if (isInStudySessionRef.current) {
+      if (error) {
+        console.error('Error fetching notifications:', error);
         return;
       }
 
-      const notifId = `call-${callData.callerId}-${Date.now()}`;
-      if (processedNotificationIdsRef.current.has(notifId)) {
-        return;
+      if (data) {
+        setDatabaseNotifications(data as DatabaseNotification[]);
       }
-      processedNotificationIdsRef.current.add(notifId);
-
-      const notification: VoiceCallNotification = {
-        id: notifId,
-        type: 'voice_call',
-        timestamp: new Date().toISOString(),
-        read: false,
-        callerId: callData.callerId,
-        callerName: callData.callerName,
-        callerAvatar: callData.callerAvatar || null,
-      };
-
-      setNotifications(prev => [notification, ...prev]);
-      
-      toast({
-        title: "Incoming Call",
-        description: `${callData.callerName} is calling you`,
-      });
     };
 
-    window.addEventListener('incoming-call' as any, handleIncomingCall as EventListener);
+    fetchNotifications();
+    
+    // Set up realtime subscription for new notifications
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const newNotification = payload.new as DatabaseNotification;
+          setDatabaseNotifications((prev) => [newNotification, ...prev]);
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(fetchNotifications, 30000); // Refresh every 30 seconds
     return () => {
-      window.removeEventListener('incoming-call' as any, handleIncomingCall as EventListener);
+      clearInterval(interval);
+      supabase.removeChannel(channel);
     };
-  }, [user, toast]);
+  }, [user]);
+
+  // Mark notification as read
+  const handleMarkAsRead = async (notificationId: string) => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', notificationId);
+
+    if (error) {
+      console.error('Error marking notification as read:', error);
+      return;
+    }
+
+    setDatabaseNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read_at: new Date().toISOString() } : n))
+    );
+  };
+
+  // Handle notification click
+  const handleNotificationClick = async (notification: DatabaseNotification) => {
+    // Mark as read
+    if (!notification.read_at) {
+      await handleMarkAsRead(notification.id);
+    }
+
+    // Navigate based on notification type
+    if (notification.type === 'message' && notification.metadata.sender_id) {
+      // Navigate to friends page with chat query parameter to open the conversation
+      navigate(`/friends?chat=${notification.metadata.sender_id}`);
+    } else if (notification.type === 'discussion_reply' && notification.metadata.community_id) {
+      navigate(`/community/${notification.metadata.community_id}`);
+    } else if (notification.type === 'call' && notification.metadata.caller_id) {
+      // Navigate to friends page with chat query parameter to open the conversation
+      navigate(`/friends?chat=${notification.metadata.caller_id}`);
+    } else if (notification.type === 'post_engagement' && notification.metadata.community_id) {
+      navigate(`/community/${notification.metadata.community_id}`);
+    }
+  };
 
   const handleAcceptRequest = async (userId: string, friendId: string) => {
     if (processingRequestId === userId) return;
@@ -614,6 +285,16 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
       }
 
       setIncomingRequests(prev => prev.filter(req => req.user_id !== userId));
+      
+      // Invalidate friend profiles cache to trigger refetch and show new friend immediately
+      if (user) {
+        queryClient.invalidateQueries({ queryKey: ['friendProfiles', user.id] });
+        // Invalidate incoming friend requests to sync with Friends page
+        queryClient.invalidateQueries({ queryKey: ['incomingFriendRequests', user.id] });
+      }
+      
+      // Refetch incoming requests to sync with Friends page
+      await fetchIncomingRequests();
       
       toast({
         title: "Success",
@@ -663,42 +344,56 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
     }
   };
 
-  const handleDismissNotification = (notif: Notification) => {
-    setNotifications(prev => prev.filter(n => n.id !== notif.id));
+  const handleDismissNotification = (notif: TestNotification) => {
+    setTestNotifications(prev => prev.filter(n => n.id !== notif.id));
+    // Move to past notifications
     setPastNotifications(prev => [notif, ...prev]);
   };
 
-  const handleNotificationClick = (notif: Notification) => {
-    // Mark as read
-    setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
-    
-    // Navigate based on type
-    if (notif.type === 'message') {
-      const msgNotif = notif as MessageNotification;
-      navigate(`/friends?chat=${msgNotif.friendId}`);
-      handleDismissNotification(notif);
-    } else if (notif.type === 'discussion_vote' || notif.type === 'discussion_reply') {
-      const discNotif = notif as DiscussionNotification;
-      navigate(`/community/${discNotif.communityId}?discussion=${discNotif.discussionId}`);
-      handleDismissNotification(notif);
-    } else if (notif.type === 'reply_vote' || notif.type === 'reply_reply') {
-      const replyNotif = notif as ReplyNotification;
-      navigate(`/community/${replyNotif.communityId}?discussion=${replyNotif.discussionId}&reply=${replyNotif.replyId}`);
-      handleDismissNotification(notif);
-    } else if (notif.type === 'voice_call') {
-      navigate('/app');
-      handleDismissNotification(notif);
+  const handleDismissDatabaseNotification = async (notificationId: string) => {
+    await handleMarkAsRead(notificationId);
+    setDatabaseNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+  };
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'message':
+        return <MessageSquare className="w-5 h-5 text-white" />;
+      case 'discussion_reply':
+        return <Reply className="w-5 h-5 text-white" />;
+      case 'call':
+        return <Phone className="w-5 h-5 text-white" />;
+      case 'post_engagement':
+        return <TrendingUp className="w-5 h-5 text-white" />;
+      default:
+        return <Bell className="w-5 h-5 text-white" />;
+    }
+  };
+
+  const getNotificationIconBg = (type: string) => {
+    switch (type) {
+      case 'message':
+        return 'bg-gradient-to-br from-blue-500 to-blue-600';
+      case 'discussion_reply':
+        return 'bg-gradient-to-br from-green-500 to-green-600';
+      case 'call':
+        return 'bg-gradient-to-br from-purple-500 to-purple-600';
+      case 'post_engagement':
+        return 'bg-gradient-to-br from-orange-500 to-orange-600';
+      default:
+        return 'bg-gradient-to-br from-blue-500 to-purple-600';
     }
   };
 
   const handleTestNotification = useCallback(() => {
-    const testNotif: BaseNotification = {
+    const testNotif: TestNotification = {
       id: `test-${Date.now()}`,
       type: 'test',
+      title: 'Test Notification',
+      message: 'This is a test notification!',
       timestamp: new Date().toISOString(),
-      read: false,
     };
-    setNotifications(prev => [testNotif, ...prev]);
+    setTestNotifications(prev => [testNotif, ...prev]);
     toast({
       title: "Test Notification",
       description: "You've received a test notification!",
@@ -717,323 +412,85 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
     };
   }, [handleTestNotification]);
 
-  const allNotifications: Notification[] = [
-    ...notifications,
+  const unreadDatabaseNotifications = databaseNotifications.filter(n => !n.read_at);
+  const readDatabaseNotifications = databaseNotifications.filter(n => n.read_at);
+  const totalNotifications = incomingRequests.length + testNotifications.length + unreadDatabaseNotifications.length;
+
+  // Store original title on mount
+  useEffect(() => {
+    // Only store if we haven't stored it yet or if current title doesn't contain notification count
+    if (!originalTitleRef.current || originalTitleRef.current === '' || originalTitleRef.current.startsWith('(')) {
+      // Extract original title if it contains notification count
+      const titleMatch = document.title.match(/^\([^)]+\)\s*-\s*(.+)$/);
+      if (titleMatch) {
+        originalTitleRef.current = titleMatch[1];
+      } else {
+        originalTitleRef.current = document.title;
+      }
+    }
+  }, []);
+
+  // Update tab title when new notifications arrive
+  useEffect(() => {
+    const currentUnreadCount = totalNotifications;
+    
+    // Initialize previous count on first load (don't show title change for existing notifications)
+    if (previousUnreadCount === -1) {
+      setPreviousUnreadCount(currentUnreadCount);
+      return;
+    }
+    
+    // If unread count increased, update tab title
+    if (currentUnreadCount > previousUnreadCount) {
+      const newCount = currentUnreadCount - previousUnreadCount;
+      const newTitle = `(${newCount} New Notification${newCount > 1 ? 's' : ''}) - ${originalTitleRef.current}`;
+      document.title = newTitle;
+      
+      // Restore original title after 2 seconds
+      const timeoutId = setTimeout(() => {
+        document.title = originalTitleRef.current;
+      }, 2000);
+      
+      setPreviousUnreadCount(currentUnreadCount);
+      return () => clearTimeout(timeoutId);
+    }
+    
+    // Update previous count if it decreased (user read notifications)
+    if (currentUnreadCount < previousUnreadCount) {
+      setPreviousUnreadCount(currentUnreadCount);
+    }
+  }, [totalNotifications, previousUnreadCount]);
+  
+  const recentNotifications = [
+    ...testNotifications.map(n => ({ ...n, isDatabase: false })),
     ...incomingRequests.map(req => ({
       id: `friend-${req.user_id}`,
-      type: 'friend_request' as const,
+      type: 'friend_request',
+      title: `${req.profiles?.username || req.profiles?.first_name || 'Someone'}`,
+      message: 'wants to be your friend',
       timestamp: req.created_at,
-      read: false,
       request: req,
+      isDatabase: false,
     })),
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    ...unreadDatabaseNotifications.map(n => ({ ...n, isDatabase: true })),
+  ].sort((a, b) => new Date(b.timestamp || b.created_at).getTime() - new Date(a.timestamp || a.created_at).getTime());
 
-  const unreadCount = allNotifications.filter(n => !n.read).length;
-
-  const renderNotification = (notif: Notification) => {
-    if (notif.type === 'friend_request' && 'request' in notif) {
-      const request = (notif as FriendRequestNotification).request;
-      return (
-        <DropdownMenuItem 
-          key={notif.id} 
-          className="p-4 border-b hover:bg-home-surface/50"
-          onSelect={(e) => e.preventDefault()}
-        >
-          <div className="flex items-start gap-3 w-full">
-            <Avatar className="w-10 h-10 border-2 border-home-primary/20 shadow-md">
-              <AvatarImage src={request.profiles?.image_url || undefined} />
-              <AvatarFallback className="bg-gradient-to-br from-home-primary to-home-secondary text-white text-xs font-semibold">
-                {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-home-foreground mb-1">
-                {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
-              </p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                wants to be your friend
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAcceptRequest(request.user_id, user?.id!);
-                  }}
-                  className="h-7 px-3 bg-green-500 hover:bg-green-600 text-white text-xs font-medium"
-                  disabled={processingRequestId === request.user_id}
-                >
-                  {processingRequestId === request.user_id ? (
-                    <>
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      Processing
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      Accept
-                    </>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeclineRequest(request.user_id, user?.id!);
-                  }}
-                  className="h-7 px-3 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 text-xs font-medium"
-                  disabled={processingRequestId === request.user_id}
-                >
-                  {processingRequestId === request.user_id ? (
-                    <>
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      Processing
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="w-3 h-3 mr-1" />
-                      Decline
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DropdownMenuItem>
-      );
-    }
-
-    if (notif.type === 'message') {
-      const msgNotif = notif as MessageNotification;
-      return (
-        <DropdownMenuItem 
-          key={notif.id}
-          className={`p-4 border-b hover:bg-home-surface/50 cursor-pointer ${!notif.read ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
-          onClick={() => handleNotificationClick(notif)}
-          onSelect={(e) => e.preventDefault()}
-        >
-          <div className="flex items-start gap-3 w-full">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0 shadow-md">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Avatar className="w-6 h-6 border border-white shadow-sm">
-                  <AvatarImage src={msgNotif.senderAvatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-500 text-white text-[10px]">
-                    {getInitials(msgNotif.senderName.split(' ')[0], msgNotif.senderName.split(' ')[1])}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="text-sm font-semibold text-home-foreground">
-                  {msgNotif.senderName}
-                </p>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2 line-clamp-2">
-                {msgNotif.messagePreview}
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-500 dark:text-gray-500">
-                  {new Date(notif.timestamp).toLocaleTimeString()}
-                </p>
-                <ArrowRight className="w-3 h-3 text-gray-400" />
-              </div>
-            </div>
-          </div>
-        </DropdownMenuItem>
-      );
-    }
-
-    if (notif.type === 'discussion_vote' || notif.type === 'discussion_reply') {
-      const discNotif = notif as DiscussionNotification;
-      return (
-        <DropdownMenuItem 
-          key={notif.id}
-          className={`p-4 border-b hover:bg-home-surface/50 cursor-pointer ${!notif.read ? 'bg-green-50/50 dark:bg-green-950/20' : ''}`}
-          onClick={() => handleNotificationClick(notif)}
-          onSelect={(e) => e.preventDefault()}
-        >
-          <div className="flex items-start gap-3 w-full">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-md ${
-              notif.type === 'discussion_vote' 
-                ? 'bg-gradient-to-br from-yellow-500 to-orange-500' 
-                : 'bg-gradient-to-br from-green-500 to-green-600'
-            }`}>
-              {notif.type === 'discussion_vote' ? (
-                <ThumbsUp className="w-5 h-5 text-white" />
-              ) : (
-                <Reply className="w-5 h-5 text-white" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Avatar className="w-6 h-6 border border-white shadow-sm">
-                  <AvatarImage src={discNotif.actorAvatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-500 text-white text-[10px]">
-                    {getInitials(discNotif.actorName.split(' ')[0], discNotif.actorName.split(' ')[1])}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="text-sm font-semibold text-home-foreground">
-                  {discNotif.actorName}
-                </p>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                {notif.type === 'discussion_vote' ? 'upvoted' : 'replied to'} your discussion
-              </p>
-              <p className="text-xs font-medium text-home-foreground mb-2 line-clamp-1">
-                "{discNotif.discussionTitle}"
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-500 dark:text-gray-500">
-                  {new Date(notif.timestamp).toLocaleTimeString()}
-                </p>
-                <ArrowRight className="w-3 h-3 text-gray-400" />
-              </div>
-            </div>
-          </div>
-        </DropdownMenuItem>
-      );
-    }
-
-    if (notif.type === 'reply_vote' || notif.type === 'reply_reply') {
-      const replyNotif = notif as ReplyNotification;
-      return (
-        <DropdownMenuItem 
-          key={notif.id}
-          className={`p-4 border-b hover:bg-home-surface/50 cursor-pointer ${!notif.read ? 'bg-purple-50/50 dark:bg-purple-950/20' : ''}`}
-          onClick={() => handleNotificationClick(notif)}
-          onSelect={(e) => e.preventDefault()}
-        >
-          <div className="flex items-start gap-3 w-full">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 shadow-md ${
-              notif.type === 'reply_vote' 
-                ? 'bg-gradient-to-br from-yellow-500 to-orange-500' 
-                : 'bg-gradient-to-br from-purple-500 to-purple-600'
-            }`}>
-              {notif.type === 'reply_vote' ? (
-                <ThumbsUp className="w-5 h-5 text-white" />
-              ) : (
-                <Reply className="w-5 h-5 text-white" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Avatar className="w-6 h-6 border border-white shadow-sm">
-                  <AvatarImage src={replyNotif.actorAvatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-purple-400 to-purple-500 text-white text-[10px]">
-                    {getInitials(replyNotif.actorName.split(' ')[0], replyNotif.actorName.split(' ')[1])}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="text-sm font-semibold text-home-foreground">
-                  {replyNotif.actorName}
-                </p>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                {notif.type === 'reply_vote' ? 'upvoted' : 'replied to'} your reply
-              </p>
-              <p className="text-xs font-medium text-home-foreground mb-2 line-clamp-1">
-                "{replyNotif.discussionTitle}"
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-500 dark:text-gray-500">
-                  {new Date(notif.timestamp).toLocaleTimeString()}
-                </p>
-                <ArrowRight className="w-3 h-3 text-gray-400" />
-              </div>
-            </div>
-          </div>
-        </DropdownMenuItem>
-      );
-    }
-
-    if (notif.type === 'voice_call') {
-      const callNotif = notif as VoiceCallNotification;
-      return (
-        <DropdownMenuItem 
-          key={notif.id}
-          className={`p-4 border-b hover:bg-home-surface/50 cursor-pointer ${!notif.read ? 'bg-red-50/50 dark:bg-red-950/20' : ''}`}
-          onClick={() => handleNotificationClick(notif)}
-          onSelect={(e) => e.preventDefault()}
-        >
-          <div className="flex items-start gap-3 w-full">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center flex-shrink-0 shadow-md animate-pulse">
-              <Phone className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Avatar className="w-6 h-6 border border-white shadow-sm">
-                  <AvatarImage src={callNotif.callerAvatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-red-400 to-red-500 text-white text-[10px]">
-                    {getInitials(callNotif.callerName.split(' ')[0], callNotif.callerName.split(' ')[1])}
-                  </AvatarFallback>
-                </Avatar>
-                <p className="text-sm font-semibold text-home-foreground">
-                  {callNotif.callerName}
-                </p>
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                is calling you. Join a study session to answer.
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] text-gray-500 dark:text-gray-500">
-                  {new Date(notif.timestamp).toLocaleTimeString()}
-                </p>
-                <ArrowRight className="w-3 h-3 text-gray-400" />
-              </div>
-            </div>
-          </div>
-        </DropdownMenuItem>
-      );
-    }
-
-    // Default/fallback notification
-    return (
-      <DropdownMenuItem 
-        key={notif.id} 
-        className="p-4 border-b hover:bg-home-surface/50 cursor-pointer"
-        onClick={() => handleDismissNotification(notif)}
-        onSelect={(e) => e.preventDefault()}
-      >
-        <div className="flex items-start gap-3 w-full">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
-            <Bell className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-home-foreground mb-1">
-              Notification
-            </p>
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-              {notif.type}
-            </p>
-            <p className="text-[10px] text-gray-500 dark:text-gray-500">
-              {new Date(notif.timestamp).toLocaleTimeString()}
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDismissNotification(notif);
-            }}
-            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-          >
-            <XCircle className="w-4 h-4" />
-          </Button>
-        </div>
-      </DropdownMenuItem>
-    );
-  };
+  // Combine past notifications from localStorage and read database notifications
+  const allPastNotifications = [
+    ...pastNotifications.map(n => ({ ...n, isDatabase: false })),
+    ...readDatabaseNotifications.map(n => ({ ...n, isDatabase: true })),
+  ].sort((a, b) => new Date(b.timestamp || b.created_at).getTime() - new Date(a.timestamp || a.created_at).getTime());
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="text-home-foreground hover:bg-home-surface relative">
             <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
+            {totalNotifications > 0 && (
               <>
                 <div className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center text-[10px] text-white font-bold shadow-lg border-2 border-white dark:border-gray-900 animate-pulse">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                  {totalNotifications > 9 ? '9+' : totalNotifications}
                 </div>
                 <div className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 rounded-full opacity-75 animate-ping"></div>
               </>
@@ -1042,33 +499,235 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-96 max-h-[500px] overflow-hidden flex flex-col p-0">
           <div className="p-4 border-b bg-gradient-to-r from-home-primary/5 to-home-secondary/5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="font-semibold text-home-foreground text-base flex items-center gap-2">
                 <Bell className="w-4 h-4" />
                 Notifications
               </h3>
-              {unreadCount > 0 && (
+              {totalNotifications > 0 && (
                 <Badge className="bg-home-primary text-white">
-                  {unreadCount}
+                  {totalNotifications}
                 </Badge>
               )}
             </div>
+            {databaseNotifications.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  if (!user) return;
+                  
+                  try {
+                    // Get unread notification IDs
+                    const unreadIds = databaseNotifications
+                      .filter(n => !n.read_at)
+                      .map(n => n.id);
+                    
+                    if (unreadIds.length > 0) {
+                      const { error } = await supabase
+                        .from('notifications')
+                        .update({ read_at: new Date().toISOString() })
+                        .in('id', unreadIds);
+                      
+                      if (error) {
+                        console.error('Error clearing notifications:', error);
+                        toast({
+                          title: "Error",
+                          description: "Failed to clear notifications",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+                    }
+                    
+                    // Update local state
+                    setDatabaseNotifications(prev =>
+                      prev.map(n => ({ ...n, read_at: n.read_at || new Date().toISOString() }))
+                    );
+                    
+                    toast({
+                      title: "Success",
+                      description: "All notifications cleared"
+                    });
+                  } catch (err) {
+                    console.error('Error clearing notifications:', err);
+                    toast({
+                      title: "Error",
+                      description: "Failed to clear notifications",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+                className="w-full text-xs h-7 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              >
+                Clear All Notifications
+              </Button>
+            )}
           </div>
           
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "recent" | "past")} className="w-full">
             <TabsList className="w-full rounded-none border-b">
               <TabsTrigger value="recent" className="flex-1">
-                Recent {unreadCount > 0 && `(${unreadCount})`}
+                Recent {totalNotifications > 0 && `(${totalNotifications})`}
               </TabsTrigger>
               <TabsTrigger value="past" className="flex-1">
-                Past {pastNotifications.length > 0 && `(${pastNotifications.length})`}
+                Past {allPastNotifications.length > 0 && `(${allPastNotifications.length})`}
               </TabsTrigger>
             </TabsList>
             
             <TabsContent value="recent" className="m-0 overflow-y-auto max-h-[400px]">
-              {allNotifications.length > 0 ? (
+              {recentNotifications.length > 0 ? (
                 <>
-                  {allNotifications.map((notif) => renderNotification(notif))}
+                  {recentNotifications.map((notif) => {
+                    if (notif.type === 'friend_request' && 'request' in notif) {
+                      const request = notif.request as FriendRequest;
+                      return (
+                        <DropdownMenuItem 
+                          key={notif.id} 
+                          className="p-4 border-b hover:bg-home-surface/50"
+                          onSelect={(e) => {
+                            e.preventDefault();
+                          }}
+                        >
+                          <div className="flex items-start gap-3 w-full">
+                            <Avatar className="w-10 h-10 border-2 border-home-primary/20 shadow-md">
+                              <AvatarImage src={request.profiles?.image_url || undefined} />
+                              <AvatarFallback className="bg-gradient-to-br from-home-primary to-home-secondary text-white text-xs font-semibold">
+                                {getInitials(request.profiles?.first_name, request.profiles?.last_name, request.profiles?.email)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-home-foreground mb-1">
+                                {request.profiles?.username || request.profiles?.first_name || 'Unknown User'}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                                wants to be your friend
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptRequest(request.user_id, user?.id!);
+                                  }}
+                                  className="h-7 px-3 bg-green-500 hover:bg-green-600 text-white text-xs font-medium"
+                                  disabled={processingRequestId === request.user_id}
+                                >
+                                  {processingRequestId === request.user_id ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      Processing
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      Accept
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeclineRequest(request.user_id, user?.id!);
+                                  }}
+                                  className="h-7 px-3 bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200 text-xs font-medium"
+                                  disabled={processingRequestId === request.user_id}
+                                >
+                                  {processingRequestId === request.user_id ? (
+                                    <>
+                                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                      Processing
+                                    </>
+                                  ) : (
+                                    <>
+                                      <XCircle className="w-3 h-3 mr-1" />
+                                      Decline
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    } else if (notif.isDatabase) {
+                      const dbNotif = notif as DatabaseNotification;
+                      return (
+                        <DropdownMenuItem 
+                          key={dbNotif.id} 
+                          className={`p-4 border-b hover:bg-home-surface/50 cursor-pointer ${!dbNotif.read_at ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
+                          onClick={() => handleNotificationClick(dbNotif)}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          <div className="flex items-start gap-3 w-full">
+                            <div className={`w-10 h-10 rounded-full ${getNotificationIconBg(dbNotif.type)} flex items-center justify-center flex-shrink-0 shadow-md`}>
+                              {getNotificationIcon(dbNotif.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-home-foreground mb-1">
+                                {dbNotif.title}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                {dbNotif.message}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-500">
+                                {new Date(dbNotif.created_at).toLocaleTimeString()}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDismissDatabaseNotification(dbNotif.id);
+                              }}
+                              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    } else {
+                      return (
+                        <DropdownMenuItem 
+                          key={notif.id} 
+                          className="p-4 border-b hover:bg-home-surface/50 cursor-pointer"
+                          onClick={() => handleDismissNotification(notif as TestNotification)}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          <div className="flex items-start gap-3 w-full">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                              <Bell className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-home-foreground mb-1">
+                                {notif.title}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                {notif.message}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-500">
+                                {new Date(notif.timestamp).toLocaleTimeString()}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDismissNotification(notif as TestNotification);
+                              }}
+                              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    }
+                  })}
                 </>
               ) : (
                 <div className="p-8 text-center">
@@ -1080,29 +739,63 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
             </TabsContent>
             
             <TabsContent value="past" className="m-0 overflow-y-auto max-h-[400px]">
-              {pastNotifications.length > 0 ? (
+              {allPastNotifications.length > 0 ? (
                 <>
-                  {pastNotifications.map((notif) => (
-                    <DropdownMenuItem 
-                      key={notif.id} 
-                      className="p-4 border-b hover:bg-home-surface/50 cursor-pointer opacity-60"
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      <div className="flex items-start gap-3 w-full">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                          <Bell className="w-5 h-5 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
-                            {notif.type}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
-                            {new Date(notif.timestamp).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
+                  {allPastNotifications.map((notif) => {
+                    if (notif.isDatabase) {
+                      const dbNotif = notif as DatabaseNotification;
+                      return (
+                        <DropdownMenuItem 
+                          key={dbNotif.id} 
+                          className="p-4 border-b hover:bg-home-surface/50 cursor-pointer"
+                          onClick={() => handleNotificationClick(dbNotif)}
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          <div className="flex items-start gap-3 w-full">
+                            <div className={`w-10 h-10 rounded-full ${getNotificationIconBg(dbNotif.type)} flex items-center justify-center flex-shrink-0 shadow-md opacity-60`}>
+                              {getNotificationIcon(dbNotif.type)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                {dbNotif.title}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                                {dbNotif.message}
+                              </p>
+                              <p className="text-[10px] text-gray-400 dark:text-gray-600">
+                                {new Date(dbNotif.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    } else {
+                      return (
+                        <DropdownMenuItem 
+                          key={notif.id} 
+                          className="p-4 border-b hover:bg-home-surface/50 cursor-pointer"
+                          onSelect={(e) => e.preventDefault()}
+                        >
+                          <div className="flex items-start gap-3 w-full">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center flex-shrink-0 shadow-md opacity-60">
+                              <Bell className="w-5 h-5 text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                                {notif.title}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+                                {notif.message}
+                              </p>
+                              <p className="text-[10px] text-gray-400 dark:text-gray-600">
+                                {new Date(notif.timestamp).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    }
+                  })}
                 </>
               ) : (
                 <div className="p-8 text-center">
@@ -1120,3 +813,4 @@ const NotificationDropdown = ({}: NotificationDropdownProps) => {
 };
 
 export default NotificationDropdown;
+

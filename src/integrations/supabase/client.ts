@@ -2,8 +2,15 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = "https://wvspwskluqkqeniwtoqf.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2c3B3c2tsdXFrcWVuaXd0b3FmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMTMxMjksImV4cCI6MjA2ODg4OTEyOX0.JzU-bMUQM8K-MFER4c2Fybuo_orgSUAzeGSHnzCjeFU";
+// Use environment variables for Supabase configuration
+// In Vite, environment variables must be prefixed with VITE_
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://wvspwskluqkqeniwtoqf.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind2c3B3c2tsdXFrcWVuaXd0b3FmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMTMxMjksImV4cCI6MjA2ODg4OTEyOX0.JzU-bMUQM8K-MFER4c2Fybuo_orgSUAzeGSHnzCjeFU";
+
+// Warn if using fallback (for development only)
+if (!import.meta.env.VITE_SUPABASE_ANON_KEY) {
+  console.warn('⚠️  Using hardcoded Supabase key. Set VITE_SUPABASE_ANON_KEY in .env for production.');
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

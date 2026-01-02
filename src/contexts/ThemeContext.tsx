@@ -34,12 +34,57 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     const root = document.documentElement;
+    
+    // Check if we're on a landing page that forces light mode
+    // Don't override light mode on landing pages (path === '/')
+    const isLandingPage = window.location.pathname === '/' || 
+                         window.location.pathname === '/features' || 
+                         window.location.pathname === '/pricing';
+    
+    if (isLandingPage && !root.classList.contains('dark')) {
+      // Landing page is forcing light mode, don't override
+      return;
+    }
+    
+    // Always sync the theme class with the state
+    // This ensures the theme is applied correctly when navigating between pages
     if (theme === 'dark') {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
     }
     localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Additional sync to handle cases where landing pages remove the dark class
+  // This runs after a delay to ensure theme is restored when navigating away from landing pages
+  useEffect(() => {
+    const syncTheme = () => {
+      const root = document.documentElement;
+      // Check if we're on a landing page - don't override on landing pages
+      const isLandingPage = window.location.pathname === '/' || 
+                           window.location.pathname === '/features' || 
+                           window.location.pathname === '/pricing';
+      
+      if (isLandingPage && !root.classList.contains('dark')) {
+        // Landing page is forcing light mode, don't override
+        return;
+      }
+      
+      const hasDarkClass = root.classList.contains('dark');
+      // Only sync if there's a mismatch between state and DOM
+      if (theme === 'dark' && !hasDarkClass) {
+        root.classList.add('dark');
+      } else if (theme === 'light' && hasDarkClass) {
+        root.classList.remove('dark');
+      }
+    };
+
+    // Sync after a short delay to catch any class removals from landing pages
+    // This ensures the theme preference is always respected
+    const timeoutId = setTimeout(syncTheme, 150);
+
+    return () => clearTimeout(timeoutId);
   }, [theme]);
 
   useEffect(() => {

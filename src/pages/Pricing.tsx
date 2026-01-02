@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,24 +7,101 @@ import {
   Check,
   X,
   Sparkles,
-  Book
+  Book,
+  Crown,
+  Loader2
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useForceLightMode } from "@/hooks/useForceLightMode";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
 
 const Pricing = () => {
+  useForceLightMode();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  
   useEffect(() => {
     document.title = "MarkIt | Pricing";
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+    };
+
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const handleSubscribe = async (plan: 'plus' | 'pro') => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    setIsLoading(plan);
+
+    try {
+      // Get the session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      // Create checkout session
+      const response = await fetch(`${BACKEND_URL}/api/create-checkout-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ plan }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      
+      if (url) {
+        // Redirect to Stripe Checkout
+        window.location.href = url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (error: any) {
+      console.error('Error creating checkout session:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start checkout. Please try again.",
+        variant: "destructive",
+      });
+      setIsLoading(null);
+    }
+  };
 
   const features = [
     { name: "AI Assistance Queries", free: "5/day", plus: "50/day", pro: "Unlimited" },
     { name: "Whiteboard Tools", free: "Basic", plus: "Advanced", pro: "Premium + Custom" },
-    { name: "Collaborators", free: "Up to 3", plus: "Up to 10", pro: "Unlimited" },
-    { name: "Storage Space", free: "1 GB", plus: "10 GB", pro: "100 GB" },
+    { name: "Storage Space", free: "1 GB", plus: "15 GB", pro: "50 GB" },
     { name: "Voice Calls", free: false, plus: true, pro: true },
-    { name: "Video Calls", free: false, plus: false, pro: true },
     { name: "Public Communities", free: true, plus: true, pro: true },
-    { name: "Private Communities", free: false, plus: false, pro: true },
     { name: "Custom Themes", free: false, plus: true, pro: true },
     { name: "Advanced Analytics", free: false, plus: false, pro: true },
     { name: "Priority Support", free: false, plus: true, pro: true },
@@ -54,12 +131,20 @@ const Pricing = () => {
           </nav>
           
           <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
-            </Link>
-            <Link to="/auth">
-              <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/app">
+                <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Dashboard</Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -78,7 +163,7 @@ const Pricing = () => {
             <h1 className="text-4xl lg:text-6xl font-bold text-home-foreground mb-6 leading-tight">
               Choose the perfect plan
               <br />
-              <span className="text-gradient font-homemade">for your learning</span>
+              <span className="text-gradient font-cedarville">for your learning</span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
@@ -121,10 +206,6 @@ const Pricing = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">Up to 3 collaborators</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
                   <span className="text-sm text-gray-600">Public communities</span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -141,7 +222,10 @@ const Pricing = () => {
               </div>
               
               <div className="mb-6">
-                <h3 className="text-2xl font-bold text-home-foreground mb-2">Plus</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-6 h-6 text-home-primary" />
+                  <h3 className="text-2xl font-bold text-home-foreground">Plus</h3>
+                </div>
                 <div className="flex items-baseline gap-1 mb-4">
                   <span className="text-5xl font-bold text-home-foreground">$7</span>
                   <span className="text-gray-600">/month</span>
@@ -149,11 +233,20 @@ const Pricing = () => {
                 <p className="text-gray-600">For serious learners</p>
               </div>
               
-              <Link to="/auth">
-                <Button className="w-full mb-6 bg-home-primary hover:bg-home-primary-hover text-white">
-                  Get Started
-                </Button>
-              </Link>
+              <Button 
+                className="w-full mb-6 bg-home-primary hover:bg-home-primary-hover text-white"
+                onClick={() => handleSubscribe('plus')}
+                disabled={isLoading === 'plus'}
+              >
+                {isLoading === 'plus' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Subscribe Now'
+                )}
+              </Button>
               
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
@@ -166,10 +259,6 @@ const Pricing = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">Up to 10 collaborators</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
                   <span className="text-sm text-gray-600">Voice calls enabled</span>
                 </div>
                 <div className="flex items-start gap-2">
@@ -178,7 +267,7 @@ const Pricing = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">10 GB storage</span>
+                  <span className="text-sm text-gray-600">15 GB storage</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
@@ -190,7 +279,10 @@ const Pricing = () => {
             {/* Pro Plan */}
             <Card className="p-8 bg-white border-gray-200 hover:shadow-xl transition-all">
               <div className="mb-6">
-                <h3 className="text-2xl font-bold text-home-foreground mb-2">Pro</h3>
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="w-6 h-6 text-home-primary" />
+                  <h3 className="text-2xl font-bold text-home-foreground">Pro</h3>
+                </div>
                 <div className="flex items-baseline gap-1 mb-4">
                   <span className="text-5xl font-bold text-home-foreground">$15</span>
                   <span className="text-gray-600">/month</span>
@@ -198,11 +290,21 @@ const Pricing = () => {
                 <p className="text-gray-600">For power users</p>
               </div>
               
-              <Link to="/auth">
-                <Button variant="outline" className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                  Get Started
-                </Button>
-              </Link>
+              <Button 
+                variant="outline" 
+                className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white"
+                onClick={() => handleSubscribe('pro')}
+                disabled={isLoading === 'pro'}
+              >
+                {isLoading === 'pro' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Subscribe Now'
+                )}
+              </Button>
               
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
@@ -215,19 +317,11 @@ const Pricing = () => {
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">Unlimited collaborators</span>
+                  <span className="text-sm text-gray-600">Voice calls</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">Voice & video calls</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">Private communities</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">100 GB storage</span>
+                  <span className="text-sm text-gray-600">50 GB storage</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-home-primary flex-shrink-0 mt-0.5" />

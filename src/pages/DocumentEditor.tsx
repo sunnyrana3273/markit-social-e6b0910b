@@ -4,19 +4,28 @@ import { exportToCanvas } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus, Phone, BotMessageSquare, Save } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, MessageSquare, Users, Send, Command, Move, UserPlus, Timer, X, Sparkles, Plus, Phone, BotMessageSquare, Save, Eraser, Pencil, FileText } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { FriendChat } from '@/components/FriendChat';
-import { CallInterface } from '@/components/CallInterface';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogOverlay, DialogPortal } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
-import { useTwilioCall } from '@/hooks/useTwilioCall';
+import { toast } from 'sonner';
 import * as pdfjsLib from 'pdfjs-dist';
 import { InlineMath, BlockMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useCall } from "@/contexts/CallContext";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Component to render text with LaTeX math support
 interface MathTextProps {
@@ -245,20 +254,25 @@ export const MathText: React.FC<MathTextProps> = ({ text, className = '' }) => {
       
       // Wrap paragraph content in a div for spacing
       if (paraResult.length > 0) {
+        // Check if paragraph contains any block-level elements (divs)
+        const hasBlockElements = paraResult.some((node: any) => 
+          node?.type === 'div'
+        );
+        
         // Check if paragraph contains block math (centered equations)
         const hasBlockMath = paraResult.some((node: any) => 
           node?.type === 'div' && node?.props?.className?.includes('text-center')
         );
         
-        if (hasBlockMath || para.trim().startsWith('**') || /^Step \d+\.?/i.test(para.trim())) {
-          // Block-level content (equations, headings)
+        if (hasBlockElements || hasBlockMath || para.trim().startsWith('**') || /^Step \d+\.?/i.test(para.trim())) {
+          // Block-level content (equations, headings, divs)
           result.push(
             <div key={`block-para-${paraIdx}`} className="mb-2">
               {paraResult}
             </div>
           );
         } else {
-          // Inline/regular paragraph
+          // Inline/regular paragraph (no block elements)
           result.push(
             <p key={`para-${paraIdx}`} className="mb-2 leading-relaxed">
               {paraResult}
@@ -334,25 +348,120 @@ interface Friend {
   image_url: string | null;
   email: string;
   lastMessageTime?: string;
+  role?: 'user' | 'admin';
+  plan?: 'free' | 'plus' | 'pro';
+  plan_expires_at?: string | null;
 }
+
+// Helper function to transform elements for light mode export
+// Ensures text and drawing elements have dark colors visible on white background
+const transformElementsForLightExport = (elements: any[]): any[] => {
+  return elements.map((el: any) => {
+    // Skip image elements - they should keep their original colors
+    if (el.type === 'image') {
+      return el;
+    }
+    
+    // Helper to check if a color is light (needs to be darkened)
+    const isLightColor = (color: string): boolean => {
+      if (!color || typeof color !== 'string') return false;
+      if (!color.startsWith('#')) return false;
+      
+      // Handle hex colors with alpha
+      const hex = color.length === 9 ? color.slice(0, 7) : color;
+      if (hex.length !== 7) return false;
+      
+      try {
+        // Extract RGB values
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        
+        // Calculate luminance (perceived brightness)
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        
+        // If luminance is high (bright color), it needs to be darkened
+        return luminance > 0.6;
+      } catch (e) {
+        return false;
+      }
+    };
+    
+    const strokeColor = el.strokeColor || el.strokeStyle || '#1e1e1e';
+    const isLight = isLightColor(strokeColor);
+    
+    // For text elements, ALWAYS force dark color to ensure visibility on white background
+    // This is critical because text written in dark mode might have white/light colors
+    if (el.type === 'text') {
+      const originalColor = el.strokeColor || el.strokeStyle || '#1e1e1e';
+      const transformed = {
+        ...el,
+        strokeColor: '#1e1e1e', // Always force dark color for text
+        strokeStyle: 'solid', // Ensure solid stroke
+      };
+      
+      // Log transformation for debugging
+      if (originalColor !== '#1e1e1e') {
+        console.debug('[DocumentEditor] Transforming text element:', {
+          originalColor: originalColor,
+          newColor: '#1e1e1e',
+          elementId: el.id,
+          textPreview: el.text?.substring(0, 30) || 'no text'
+        });
+      }
+      
+      return transformed;
+    }
+    
+    // For drawing elements (freedraw, rectangle, ellipse, etc.), darken if light
+    if (isLight) {
+      const transformed = {
+        ...el,
+        strokeColor: '#1e1e1e', // Force dark color
+      };
+      
+      console.debug('[DocumentEditor] Transforming drawing element:', {
+        type: el.type,
+        originalColor: strokeColor,
+        newColor: '#1e1e1e',
+        elementId: el.id
+      });
+      
+      return transformed;
+    }
+    
+    // Keep original if already dark
+    return el;
+  });
+};
 
 const DocumentEditor: React.FC = () => {
   const navigate = useNavigate();
   const { fileId } = useParams();
   const { theme } = useTheme();
   const presenceChannelRef = React.useRef<RealtimeChannel | null>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
   const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
   const [pdfPages, setPdfPages] = useState<string[]>([]); // Thumbnails for display
   const [pdfFullPages, setPdfFullPages] = useState<string[]>([]); // Full-res for canvas insertion
   const [pdfPageDimensions, setPdfPageDimensions] = useState<{ width: number; height: number }[]>([]);
   const [isPdf, setIsPdf] = useState(false);
+  const [importedPages, setImportedPages] = useState<Set<number>>(new Set()); // Track which pages have been imported to canvas
   const [scrollPosition, setScrollPosition] = useState(0);
   const [loading, setLoading] = useState(true);
   const [friends, setFriends] = useState<Friend[]>([]);
-  const [showFriends, setShowFriends] = useState(true);
-  const [isPdfScrollerMinimized, setIsPdfScrollerMinimized] = useState(false);
+  
+  // Load UI states from localStorage on mount
+  const getStoredUIState = (key: string, defaultValue: boolean) => {
+    if (!fileId) return defaultValue;
+    const stored = localStorage.getItem(`docEditor_ui_${fileId}_${key}`);
+    return stored !== null ? JSON.parse(stored) : defaultValue;
+  };
+
+  const [showFriends, setShowFriends] = useState(() => getStoredUIState('showFriends', true));
+  const [isPdfScrollerMinimized, setIsPdfScrollerMinimized] = useState(() => getStoredUIState('isPdfScrollerMinimized', false));
   const [showChatInput, setShowChatInput] = useState(false);
-  const [showChatSidebar, setShowChatSidebar] = useState(false);
+  const [showChatSidebar, setShowChatSidebar] = useState(() => getStoredUIState('showChatSidebar', false));
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>(() => {
     // Load saved chat messages from localStorage
@@ -362,31 +471,39 @@ const DocumentEditor: React.FC = () => {
   const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
   const [availableChatSessions, setAvailableChatSessions] = useState<Array<{ id: string; created_at: string; title: string | null }>>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingChatTitle, setEditingChatTitle] = useState<string>('');
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
   const [currentChatFriend, setCurrentChatFriend] = useState<Friend | null>(null);
-  const [showFriendChat, setShowFriendChat] = useState(false);
+  
+  // Token usage tracking
+  interface TokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    timestamp: string;
+    userMessage: string;
+    assistantMessage: string;
+  }
+  const [tokenLogs, setTokenLogs] = useState<TokenUsage[]>(() => {
+    // Load from localStorage
+    if (!fileId) return [];
+    const saved = localStorage.getItem(`tokenLogs_${fileId}`);
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showTokenLog, setShowTokenLog] = useState(false);
+  const [showFriendChat, setShowFriendChat] = useState(() => getStoredUIState('showFriendChat', false));
   const [friendMessages, setFriendMessages] = useState<Array<{ id: string; sender_id: string; receiver_id: string; message: string; created_at: string; read_at: string | null }>>([]);
   const [pendingFriendAttachment, setPendingFriendAttachment] = useState<string | null>(null);
+  const [pendingChatAttachment, setPendingChatAttachment] = useState<string | null>(null);
+  const [expandedChatImage, setExpandedChatImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [chatPosition, setChatPosition] = useState({ x: 50, y: window.innerHeight - 120 });
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [activeCallFriend, setActiveCallFriend] = useState<Friend | null>(null);
   
   // Initialize Twilio call hook
-  const {
-    callState,
-    initiateCall,
-    answerCall,
-    rejectCall,
-    endCall,
-    muteCall,
-    unmuteCall,
-    isMuted,
-    isDeviceReady,
-    error: callError,
-    incomingCallFrom,
-  } = useTwilioCall();
+  const { initiateCall } = useCall();
 
   useEffect(() => {
     document.title = "MarkIt | Document Editor";
@@ -408,11 +525,66 @@ const DocumentEditor: React.FC = () => {
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [lastActivityTime, setLastActivityTime] = useState<number>(Date.now());
   const [isTimerActive, setIsTimerActive] = useState(true);
-  const [isTimerMinimized, setIsTimerMinimized] = useState(false);
+  const [isTimerMinimized, setIsTimerMinimized] = useState(() => getStoredUIState('isTimerMinimized', false));
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userPlan, setUserPlan] = useState<'free' | 'plus' | 'pro' | 'admin' | null>(null);
   const lastSyncedMetricsRef = useRef<{ date: string; minutes: number; problems: number } | null>(null);
   
   // Capture preview state removed
+
+  // Load token logs when fileId changes
+  useEffect(() => {
+    if (fileId) {
+      const saved = localStorage.getItem(`tokenLogs_${fileId}`);
+      if (saved) {
+        try {
+          setTokenLogs(JSON.parse(saved));
+        } catch (e) {
+          console.error('Error loading token logs:', e);
+          setTokenLogs([]);
+        }
+      } else {
+        setTokenLogs([]);
+      }
+    }
+  }, [fileId]);
+
+  // Save UI states to localStorage whenever they change
+  useEffect(() => {
+    if (fileId) {
+      localStorage.setItem(`docEditor_ui_${fileId}_showFriends`, JSON.stringify(showFriends));
+    }
+  }, [showFriends, fileId]);
+
+  useEffect(() => {
+    if (fileId) {
+      localStorage.setItem(`docEditor_ui_${fileId}_isPdfScrollerMinimized`, JSON.stringify(isPdfScrollerMinimized));
+    }
+  }, [isPdfScrollerMinimized, fileId]);
+
+  useEffect(() => {
+    if (fileId) {
+      localStorage.setItem(`docEditor_ui_${fileId}_showChatSidebar`, JSON.stringify(showChatSidebar));
+    }
+  }, [showChatSidebar, fileId]);
+
+  useEffect(() => {
+    if (fileId) {
+      // Only save showFriendChat state if there's actually a friend to chat with
+      if (currentChatFriend) {
+        localStorage.setItem(`docEditor_ui_${fileId}_showFriendChat`, JSON.stringify(showFriendChat));
+      } else {
+        // Clear the stored state if no friend is selected
+        localStorage.removeItem(`docEditor_ui_${fileId}_showFriendChat`);
+      }
+    }
+  }, [showFriendChat, currentChatFriend, fileId]);
+
+  useEffect(() => {
+    if (fileId) {
+      localStorage.setItem(`docEditor_ui_${fileId}_isTimerMinimized`, JSON.stringify(isTimerMinimized));
+    }
+  }, [isTimerMinimized, fileId]);
 
   // Load saved timer data on component mount
   useEffect(() => {
@@ -438,6 +610,7 @@ const DocumentEditor: React.FC = () => {
       const todayStr = `${yyyy}-${mm}-${dd}`;
       const lastDate = localStorage.getItem('studyStreak:lastDate');
       const currentCount = parseInt(localStorage.getItem('studyStreak:count') || '0', 10) || 0;
+      const kpAwardedToday = localStorage.getItem(`streakKpAwarded:${todayStr}`) === 'true';
 
       const toDate = (s: string) => {
         const [Y, M, D] = s.split('-').map(Number);
@@ -445,8 +618,15 @@ const DocumentEditor: React.FC = () => {
       };
 
       let nextCount = currentCount;
+      let shouldAwardKP = false;
+      let kpToAward = 0;
+
       if (!lastDate) {
         nextCount = 1;
+        if (!kpAwardedToday) {
+          shouldAwardKP = true;
+          kpToAward = 1;
+        }
       } else {
         const last = toDate(lastDate);
         const diffDays = Math.floor((new Date(yyyy, parseInt(mm, 10) - 1, parseInt(dd, 10)).getTime() - last.getTime()) / 86400000);
@@ -454,9 +634,19 @@ const DocumentEditor: React.FC = () => {
           // same day: no change
           nextCount = currentCount || 1;
         } else if (diffDays === 1) {
+          // Streak continues: increment and award points equal to new streak count
           nextCount = currentCount + 1;
+          if (!kpAwardedToday) {
+            shouldAwardKP = true;
+            kpToAward = nextCount;
+          }
         } else if (diffDays > 1) {
+          // Streak broken: start over
           nextCount = 1;
+          if (!kpAwardedToday) {
+            shouldAwardKP = true;
+            kpToAward = 1;
+          }
         } else {
           // If clock went backwards, keep current
           nextCount = Math.max(currentCount, 1);
@@ -465,6 +655,43 @@ const DocumentEditor: React.FC = () => {
 
       localStorage.setItem('studyStreak:lastDate', todayStr);
       localStorage.setItem('studyStreak:count', String(nextCount));
+
+      // Award knowledge points if needed
+      if (shouldAwardKP && kpToAward > 0) {
+        (async () => {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              // Fetch current knowledge points
+              const { data: profile, error: fetchError } = await supabase
+                .from('profiles')
+                .select('knowledge_points')
+                .eq('id', user.id)
+                .single();
+              
+              if (fetchError) {
+                console.error('Error fetching profile for KP award:', fetchError);
+                return;
+              }
+              
+              // Update with incremented value
+              const newKP = (profile?.knowledge_points || 0) + kpToAward;
+              const { error: updateError } = await supabase
+                .from('profiles')
+                .update({ knowledge_points: newKP })
+                .eq('id', user.id);
+              
+              if (updateError) {
+                console.error('Error awarding streak knowledge points:', updateError);
+              } else {
+                localStorage.setItem(`streakKpAwarded:${todayStr}`, 'true');
+              }
+            }
+          } catch (e) {
+            console.error('Error awarding streak knowledge points:', e);
+          }
+        })();
+      }
     } catch (e) {
       // ignore
     }
@@ -486,8 +713,33 @@ const DocumentEditor: React.FC = () => {
         }
 
         setCurrentUserId(user.id);
+
+        // Fetch user profile to get plan
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('plan, role, plan_expires_at')
+          .eq('id', user.id)
+          .single();
+
+        if (!profileError && profile) {
+          // Check if plan has expired
+          if (profile.plan_expires_at) {
+            const expiresAt = new Date(profile.plan_expires_at);
+            const now = new Date();
+            if (expiresAt < now && profile.plan && profile.plan !== 'free') {
+              setUserPlan('free');
+            } else {
+              setUserPlan(profile.role === 'admin' ? 'admin' : (profile.plan || 'free'));
+            }
+          } else {
+            setUserPlan(profile.role === 'admin' ? 'admin' : (profile.plan || 'free'));
+          }
+        } else {
+          setUserPlan('free'); // Default to free if profile fetch fails
+        }
       } catch (err) {
         console.error('[DocumentEditor] Unexpected error loading user for metrics sync:', err);
+        setUserPlan('free'); // Default to free on error
       }
     };
 
@@ -495,31 +747,107 @@ const DocumentEditor: React.FC = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!excalidrawAPI) return;
+    if (!excalidrawAPI) {
+      console.debug('[DocumentEditor] excalidrawAPI not available for capture listener');
+      return;
+    }
 
+    console.debug('[DocumentEditor] Setting up whiteboard capture listener');
     const captureChannel = new BroadcastChannel('whiteboard-capture');
 
     captureChannel.onmessage = async (event) => {
       const payload = event.data as { type?: string; requestId?: string };
-      if (!payload || payload.type !== 'capture-request' || !payload.requestId) return;
+      if (!payload || payload.type !== 'capture-request' || !payload.requestId) {
+        console.debug('[DocumentEditor] Invalid capture request payload:', payload);
+        return;
+      }
 
+      console.debug('[DocumentEditor] Received capture request:', payload.requestId);
+      
       try {
-        const elements = excalidrawAPI.getSceneElements?.() || [];
+        if (!excalidrawAPI) {
+          throw new Error('excalidrawAPI is not available');
+        }
+
+        let elements = excalidrawAPI.getSceneElements?.() || [];
         const appState = excalidrawAPI.getAppState?.() || {};
-        const canvas = await exportToCanvas({
-          elements,
-          appState,
-          files: excalidrawAPI.getFiles?.() || {},
+        const files = excalidrawAPI.getFiles?.() || {};
+        
+        // Filter out deleted elements - they shouldn't be in the export
+        elements = elements.filter((el: any) => !el.isDeleted);
+        
+        // Log element types to debug what's being captured
+        const elementTypes = elements.reduce((acc: any, el: any) => {
+          acc[el.type] = (acc[el.type] || 0) + 1;
+          return acc;
+        }, {});
+        
+        console.debug('[DocumentEditor] Capturing whiteboard:', {
+          totalElements: elements.length,
+          elementTypes,
+          hasAppState: !!appState,
+          filesCount: Object.keys(files).length,
+          viewBackgroundColor: appState.viewBackgroundColor
         });
+
+        // Small delay to ensure all elements are rendered
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Re-fetch elements after delay to ensure we have the latest state
+        elements = excalidrawAPI.getSceneElements?.() || [];
+        elements = elements.filter((el: any) => !el.isDeleted);
+        
+        // Transform elements to ensure dark colors for light mode export
+        const transformedElements = transformElementsForLightExport(elements);
+        
+        // Log text elements specifically for debugging
+        const textElements = transformedElements.filter((el: any) => el.type === 'text');
+        if (textElements.length > 0) {
+          console.debug('[DocumentEditor] Text elements being exported:', textElements.map((el: any) => ({
+            id: el.id,
+            strokeColor: el.strokeColor,
+            textPreview: el.text?.substring(0, 30),
+            strokeStyle: el.strokeStyle,
+            fillStyle: el.fillStyle
+          })));
+        }
+        
+        const canvas = await exportToCanvas({
+          elements: transformedElements,
+          appState: {
+            ...appState,
+            exportBackground: true, // Ensure background is exported
+            viewBackgroundColor: '#ffffff', // Force white background for consistent export regardless of theme
+            exportWithDarkMode: false, // Force light mode colors so text is visible (black text on white/light backgrounds)
+          },
+          files,
+          getDimensions: (width, height, scale) => {
+            // Ensure we capture the full scene
+            return { width, height, scale };
+          },
+        });
+        
+        if (!canvas) {
+          throw new Error('exportToCanvas returned null or undefined');
+        }
+        
         const dataURL = canvas.toDataURL('image/png');
+        console.debug('[DocumentEditor] Whiteboard captured successfully:', {
+          size: dataURL.length,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          elementsCaptured: elements.length
+        });
         captureChannel.postMessage({ requestId: payload.requestId, image: dataURL });
       } catch (error) {
         console.error('[DocumentEditor] Failed to capture whiteboard for attachment:', error);
-        captureChannel.postMessage({ requestId: payload.requestId, error: 'Unable to capture whiteboard preview.' });
+        const errorMessage = error instanceof Error ? error.message : 'Unable to capture whiteboard preview.';
+        captureChannel.postMessage({ requestId: payload.requestId, error: errorMessage });
       }
     };
 
     return () => {
+      console.debug('[DocumentEditor] Cleaning up whiteboard capture listener');
       captureChannel.close();
     };
   }, [excalidrawAPI]);
@@ -903,6 +1231,7 @@ const DocumentEditor: React.FC = () => {
     }
   }, [currentUserId, fileId]);
 
+
   // Save chat to Supabase
   const saveChatToSupabase = async () => {
     if (!currentUserId || !fileId || chatMessages.length === 0) return;
@@ -1015,6 +1344,57 @@ const DocumentEditor: React.FC = () => {
     }
   };
 
+  // Get display name for chat (title if exists, otherwise formatted date)
+  const getChatDisplayName = (session: { id: string; created_at: string; title: string | null }) => {
+    return session.title || formatChatDate(session.created_at);
+  };
+
+  // Handle opening edit dialog
+  const handleEditChatName = (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation(); // Prevent select from triggering
+    const session = availableChatSessions.find(s => s.id === sessionId);
+    if (session) {
+      setEditingChatId(sessionId);
+      setEditingChatTitle(session.title || '');
+      setIsEditDialogOpen(true);
+    }
+  };
+
+  // Update chat title
+  const handleUpdateChatTitle = async () => {
+    if (!editingChatId || !currentUserId) return;
+
+    try {
+      const { error } = await supabase
+        .from('ai_chat_sessions')
+        .update({ title: editingChatTitle.trim() || null })
+        .eq('id', editingChatId)
+        .eq('user_id', currentUserId);
+
+      if (error) {
+        console.error('Error updating chat title:', error);
+        alert('Failed to update chat name');
+        return;
+      }
+
+      // Update local state
+      setAvailableChatSessions(prev =>
+        prev.map(session =>
+          session.id === editingChatId
+            ? { ...session, title: editingChatTitle.trim() || null }
+            : session
+        )
+      );
+
+      setIsEditDialogOpen(false);
+      setEditingChatId(null);
+      setEditingChatTitle('');
+    } catch (error) {
+      console.error('Error updating chat title:', error);
+      alert('Failed to update chat name');
+    }
+  };
+
   // Format date for display
   const formatChatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1087,10 +1467,10 @@ const DocumentEditor: React.FC = () => {
 
         console.log('🔍 Friend IDs to fetch:', friendIds);
 
-        // Fetch friend profiles
+        // Fetch friend profiles including plan information
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, first_name, last_name, image_url, email')
+          .select('id, first_name, last_name, image_url, email, role, plan, plan_expires_at')
           .in('id', friendIds);
 
         console.log('🔍 Profiles query result:', { profilesData, profilesError });
@@ -1331,6 +1711,9 @@ const DocumentEditor: React.FC = () => {
       y: newElement.y,
       viewportCenter: { x: viewportCenterX, y: viewportCenterY }
     });
+
+    // Mark this page as imported
+    setImportedPages(prev => new Set(prev).add(pageIndex));
   };
 
   const getInitials = (friend: Friend) => {
@@ -1483,42 +1866,120 @@ const DocumentEditor: React.FC = () => {
     };
   }, [showChatSidebar]);
 
+  const handleChatPaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData.items;
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Check if the pasted item is an image
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        
+        const file = item.getAsFile();
+        if (!file) return;
+        
+        // Convert file to base64
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const base64Image = event.target?.result as string;
+          if (base64Image) {
+            setPendingChatAttachment(base64Image);
+            toast.success('Image pasted! Click send to share.');
+          }
+        };
+        reader.onerror = () => {
+          toast.error('Failed to process image');
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+    }
+  };
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const question = chatInput.trim();
-    if (!question) {
+    const hasAttachment = !!pendingChatAttachment;
+    
+    // Allow sending with just text, just image, or both
+    if (!question && !hasAttachment) {
       return;
     }
 
     let dataURL: string | null = null;
 
-    if (excalidrawAPI) {
+    // If there's a pasted attachment, use it; otherwise capture whiteboard
+    if (pendingChatAttachment) {
+      dataURL = pendingChatAttachment;
+      setPendingChatAttachment(null);
+    } else if (excalidrawAPI) {
       try {
-        const elements = excalidrawAPI.getSceneElements();
-        const appState = excalidrawAPI.getAppState();
+        let elements = excalidrawAPI.getSceneElements?.() || [];
+        const appState = excalidrawAPI.getAppState?.() || {};
+        const files = excalidrawAPI.getFiles?.() || {};
+        
+        // Filter out deleted elements
+        elements = elements.filter((el: any) => !el.isDeleted);
+        
+        // Transform elements to ensure dark colors for light mode export
+        const transformedElements = transformElementsForLightExport(elements);
+        
+        // Log element types for debugging
+        const elementTypes = transformedElements.reduce((acc: any, el: any) => {
+          acc[el.type] = (acc[el.type] || 0) + 1;
+          return acc;
+        }, {});
+        console.debug('[DocumentEditor] Capturing for chat:', {
+          totalElements: transformedElements.length,
+          elementTypes
+        });
+        
+        if (!transformedElements || transformedElements.length === 0) {
+          console.warn('[DocumentEditor] No elements to capture on whiteboard.');
+        }
+        
         const canvas = await exportToCanvas({
-          elements,
-          appState,
-          files: excalidrawAPI.getFiles(),
+          elements: transformedElements,
+          appState: {
+            ...appState,
+            exportBackground: true,
+            viewBackgroundColor: '#ffffff', // Force white background for consistent export regardless of theme
+            exportWithDarkMode: false, // Force light mode colors so text is visible (black text on white/light backgrounds)
+          },
+          files,
         });
         dataURL = canvas.toDataURL("image/png");
       } catch (error) {
-        console.error('Error capturing scene:', error);
+        console.error('[DocumentEditor] Error capturing scene:', error);
+        toast.error('Failed to capture whiteboard. Please try again.');
       }
     }
 
-    if (!dataURL) {
+    if (!dataURL && !question) {
       console.warn('[DocumentEditor] Unable to capture whiteboard for chat message.');
       return;
     }
 
-    await sendMessageWithImage(question, dataURL);
+    // Send message with image (or just text if no image)
+    if (dataURL) {
+      await sendMessageWithImage(question || '', dataURL);
+    } else {
+      // Fallback: send text-only message (though this shouldn't happen with current flow)
+      await sendMessageWithImage(question, '');
+    }
+    
+    setChatInput('');
   };
 
   const sendMessageWithImage = async (question: string, imageDataURL: string) => {
-
-    // Add user message
-    const userMessage = { role: 'user' as const, content: question };
+    const isPastedImage = imageDataURL && imageDataURL.startsWith('data:image');
+    
+    // Add user message - if it's a pasted image, store it in content
+    const userMessageContent = isPastedImage && imageDataURL 
+      ? (question ? `${question}\n${imageDataURL}` : imageDataURL)
+      : question;
+    const userMessage = { role: 'user' as const, content: userMessageContent };
     setChatMessages(prev => {
       const updated: Array<{ role: 'user' | 'assistant'; content: string }> = [...prev, userMessage];
       // Save to localStorage
@@ -1535,26 +1996,43 @@ const DocumentEditor: React.FC = () => {
     setShowChatSidebar(true);
 
     try {
-      // Convert captured image to blob
+      // If it's a pasted image, we still need to send it to the backend for analysis
+      // Convert image to blob
       const response = await fetch(imageDataURL);
       const blob = await response.blob();
       
       // Create form data with image and prompt
       const formData = new FormData();
-      formData.append('image', blob, 'whiteboard.png');
+      formData.append('image', blob, isPastedImage ? 'pasted-image.png' : 'whiteboard.png');
       const latexInstructions = [
         'Provide a detailed, step-by-step solution.',
         'Number each step (Step 1., Step 2., etc.).',
         'Use LaTeX for all mathematical expressions: inline \(...\), display \[...\], and \boxed{} for final answers.',
         'Keep explanatory text concise but complete.'
       ].join(' ');
-      const augmentedPrompt = `${question}\n\n${latexInstructions}`;
+      const augmentedPrompt = question 
+        ? `${question}\n\n${latexInstructions}`
+        : `Analyze this image and provide a detailed explanation.\n\n${latexInstructions}`;
       formData.append('prompt', augmentedPrompt);
+      
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated. Please log in.');
+      }
+      
+      // Create AbortController for cancellation
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
       
       // Send to backend
       const apiResponse = await fetch('http://localhost:3001/api/analyze-whiteboard', {
         method: 'POST',
-        body: formData
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: formData,
+        signal: abortController.signal
       });
       
       const data = await apiResponse.json();
@@ -1564,6 +2042,26 @@ const DocumentEditor: React.FC = () => {
         const processed = await generateExpandedSteps(assistantContent);
         console.debug('[AI] Original response:', assistantContent);
         console.debug('[AI] Processed response:', processed);
+        
+        // Track token usage if available
+        if (data.tokenUsage) {
+          const tokenEntry: TokenUsage = {
+            inputTokens: data.tokenUsage.prompt_tokens || 0,
+            outputTokens: data.tokenUsage.completion_tokens || 0,
+            timestamp: new Date().toISOString(),
+            userMessage: question || 'Image analysis',
+            assistantMessage: processed.substring(0, 200) // Store first 200 chars for reference
+          };
+          setTokenLogs(prev => {
+            const updated = [...prev, tokenEntry];
+            // Save to localStorage
+            if (fileId) {
+              localStorage.setItem(`tokenLogs_${fileId}`, JSON.stringify(updated));
+            }
+            return updated;
+          });
+        }
+        
         // Add AI response
         setChatMessages(prev => {
           const updated: Array<{ role: 'user' | 'assistant'; content: string }> = [...prev, { role: 'assistant' as const, content: processed }];
@@ -1587,6 +2085,20 @@ const DocumentEditor: React.FC = () => {
         });
       }
     } catch (error) {
+      // Don't show error if request was aborted
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('[DocumentEditor] Request was cancelled');
+        // Remove the user message that was added if request was cancelled
+        setChatMessages(prev => {
+          const updated = prev.slice(0, -1); // Remove last message (the user message)
+          if (fileId) {
+            localStorage.setItem(`chatMessages_${fileId}`, JSON.stringify(updated));
+          }
+          return updated;
+        });
+        return;
+      }
+      
       console.error('Error getting AI response:', error);
       setChatMessages(prev => {
         const updated: Array<{ role: 'user' | 'assistant'; content: string }> = [...prev, { 
@@ -1601,6 +2113,15 @@ const DocumentEditor: React.FC = () => {
       });
     } finally {
       setIsChatLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStopResponse = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsChatLoading(false);
     }
   };
 
@@ -1613,10 +2134,26 @@ const DocumentEditor: React.FC = () => {
       if (excalidrawAPI) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-        const elements = excalidrawAPI.getSceneElements();
-        const appState = excalidrawAPI.getAppState();
-        const files = excalidrawAPI.getFiles();
-        const canvas = await exportToCanvas({ elements, appState, files });
+        let elements = excalidrawAPI.getSceneElements?.() || [];
+        const appState = excalidrawAPI.getAppState?.() || {};
+        const files = excalidrawAPI.getFiles?.() || {};
+        
+        // Filter out deleted elements
+        elements = elements.filter((el: any) => !el.isDeleted);
+        
+        // Transform elements to ensure dark colors for light mode export
+        const transformedElements = transformElementsForLightExport(elements);
+        
+        const canvas = await exportToCanvas({ 
+          elements: transformedElements, 
+          appState: {
+            ...appState,
+            exportBackground: true,
+            viewBackgroundColor: '#ffffff', // Force white background for consistent export regardless of theme
+            exportWithDarkMode: false, // Force light mode colors so text is visible (black text on white/light backgrounds)
+          },
+          files 
+        });
         const dataURL = canvas.toDataURL('image/png');
 
         setPendingFriendAttachment(dataURL);
@@ -1820,10 +2357,26 @@ const DocumentEditor: React.FC = () => {
     try {
       if (!excalidrawAPI) return 'Practice Question: Create a related question in plain English based on the main topic shown on the whiteboard.';
       // Prefer backend generation using a capture of the scene
-      const elements = excalidrawAPI.getSceneElements?.() || [];
+      let elements = excalidrawAPI.getSceneElements?.() || [];
       const appState = excalidrawAPI.getAppState?.() || {};
       const files = excalidrawAPI.getFiles?.() || {};
-      const canvas = await exportToCanvas({ elements, appState, files });
+      
+      // Filter out deleted elements
+      elements = elements.filter((el: any) => !el.isDeleted);
+      
+      // Transform elements to ensure dark colors for light mode export
+      const transformedElements = transformElementsForLightExport(elements);
+      
+      const canvas = await exportToCanvas({ 
+        elements: transformedElements, 
+        appState: {
+          ...appState,
+          exportBackground: true,
+          viewBackgroundColor: '#ffffff', // Force white background for consistent export regardless of theme
+          exportWithDarkMode: false, // Force light mode colors so text is visible (black text on white/light backgrounds)
+        },
+        files 
+      });
       
       const makeDataUrl = (maxW: number, quality: number) => {
         const scale = canvas.width > maxW ? maxW / canvas.width : 1;
@@ -1932,6 +2485,7 @@ const DocumentEditor: React.FC = () => {
   };
 
   return (
+    <>
     <div className="relative w-screen h-screen overflow-hidden">
       {/* Back button overlay */}
       <div className="absolute top-4 left-4 z-50">
@@ -1990,37 +2544,67 @@ const DocumentEditor: React.FC = () => {
                         <p className="text-xs text-gray-500 dark:text-gray-400">Ask for help</p>
                       </div>
                       <div className="flex items-center gap-4">
-                        <Phone 
-                          className={`w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110 ${
-                            !isDeviceReady ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          onClick={async () => {
-                            if (!isDeviceReady) {
-                              alert('Call service is initializing. Please wait a moment...');
-                              return;
+                        {(() => {
+                          const currentPlan = userPlan || 'free';
+                          const isCurrentUserAdmin = currentPlan === 'admin';
+                          const currentEffectivePlan = isCurrentUserAdmin ? 'admin' : currentPlan;
+                          const canUseVoiceCalls = isCurrentUserAdmin || (currentEffectivePlan === 'plus' || currentEffectivePlan === 'pro');
+                          
+                          const friendPlan = friend.plan || 'free';
+                          const isFriendAdmin = friend.role === 'admin';
+                          let friendEffectivePlan = friendPlan;
+                          if (friend.plan_expires_at && friendPlan !== 'free') {
+                            const expiresAt = new Date(friend.plan_expires_at);
+                            const now = new Date();
+                            if (expiresAt < now) {
+                              friendEffectivePlan = 'free';
                             }
-                            
-                            if (callState !== 'idle' && callState !== 'disconnected') {
-                              alert('A call is already in progress');
-                              return;
-                            }
-                            
-                            if (callError) {
-                              alert(`Call error: ${callError}. Please try again.`);
-                              return;
-                            }
-                            
-                            try {
-                              setActiveCallFriend(friend);
-                              await initiateCall(friend.id, getDisplayName(friend));
-                            } catch (error: any) {
-                              console.error('Failed to initiate call:', error);
-                              alert(`Failed to start call: ${error.message || 'Unknown error'}`);
-                              setActiveCallFriend(null);
-                            }
-                          }}
-                          title={isDeviceReady ? 'Call friend' : 'Initializing call service...'}
-                        />
+                          }
+                          const friendCanReceiveCalls = isFriendAdmin || (friendEffectivePlan === 'plus' || friendEffectivePlan === 'pro');
+                          const isDisabled = !canUseVoiceCalls || !friendCanReceiveCalls;
+                          
+                          let tooltipText = 'Call friend';
+                          if (!canUseVoiceCalls) {
+                            tooltipText = 'Upgrade to Plus or Pro plan for voice call integration';
+                          } else if (!friendCanReceiveCalls) {
+                            tooltipText = 'This friend cannot receive calls (Free plan)';
+                          }
+
+                          return (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Phone 
+                                    className={`w-7 h-7 p-1.5 rounded-md transition-all ${
+                                      isDisabled 
+                                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50 pointer-events-auto' 
+                                        : 'text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 cursor-pointer hover:scale-110'
+                                    }`}
+                                    onClick={async () => {
+                                      if (!canUseVoiceCalls) {
+                                        alert('Voice calls are only available for Plus and Pro plans. Please upgrade your plan to use this feature.');
+                                        return;
+                                      }
+                                      if (!friendCanReceiveCalls) {
+                                        alert(`${getDisplayName(friend)} cannot receive calls because they are on the Free plan. Voice calls are only available for Plus and Pro plans.`);
+                                        return;
+                                      }
+                                      try {
+                                        await initiateCall(friend.id, getDisplayName(friend), friend.image_url);
+                                      } catch (error: any) {
+                                        console.error('Failed to initiate call:', error);
+                                        alert(`Failed to start call: ${error.message || 'Unknown error'}`);
+                                      }
+                                    }}
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>{tooltipText}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          );
+                        })()}
                         <MessageSquare 
                           className="w-7 h-7 text-gray-400 dark:text-gray-500 hover:text-home-primary hover:bg-home-primary/10 dark:hover:bg-home-primary/20 p-1.5 rounded-md transition-all cursor-pointer hover:scale-110"
                           onClick={() => handleAskFriend(friend)}
@@ -2124,6 +2708,7 @@ const DocumentEditor: React.FC = () => {
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
+                onPaste={handleChatPaste}
                 placeholder="Ask a question about the whiteboard..."
                 className="bg-transparent text-gray-200 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 flex-1 outline-none text-sm ml-8"
                 autoFocus
@@ -2143,16 +2728,30 @@ const DocumentEditor: React.FC = () => {
                 <span>+ I</span>
               </div>
               
-              {/* Send button */}
-              <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-full p-2 transition-colors"
-                disabled={!chatInput.trim()}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <Send className="w-4 h-4" />
-              </button>
+              {/* Send/Stop button */}
+              {isChatLoading ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStopResponse();
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 text-white rounded-full p-2 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white rounded-full p-2 transition-colors"
+                  disabled={!chatInput.trim()}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -2190,20 +2789,30 @@ const DocumentEditor: React.FC = () => {
                 <div className="flex gap-2 items-center">
                   {visiblePages.map((pageDataUrl, index) => {
                     const actualPageIndex = scrollPosition + index;
+                    const isImported = importedPages.has(actualPageIndex);
                     return (
                       <div
                         key={actualPageIndex}
-                        className="relative group cursor-pointer hover:scale-105 transition-transform"
+                        className={`relative group cursor-pointer hover:scale-105 transition-transform ${isImported ? 'opacity-50' : ''}`}
                         onClick={() => handlePageClick(actualPageIndex)}
                         title={`Click to add page ${actualPageIndex + 1} to canvas`}
                       >
                         <img
                           src={pageDataUrl}
                           alt={`Page ${actualPageIndex + 1}`}
-                          className="h-24 w-auto rounded border-2 border-gray-300 shadow-sm hover:border-home-primary transition-colors"
+                          className={`h-24 w-auto rounded border-2 shadow-sm transition-colors ${
+                            isImported 
+                              ? 'border-gray-400 grayscale' 
+                              : 'border-gray-300 hover:border-home-primary'
+                          }`}
                         />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs text-center py-1 rounded-b group-hover:bg-home-primary transition-colors">
+                        <div className={`absolute bottom-0 left-0 right-0 text-white text-xs text-center py-1 rounded-b transition-colors ${
+                          isImported 
+                            ? 'bg-gray-600/70' 
+                            : 'bg-black/70 group-hover:bg-home-primary'
+                        }`}>
                           Page {actualPageIndex + 1}
+                          {isImported && <span className="block text-[10px] mt-0.5">imported</span>}
                         </div>
                       </div>
                     );
@@ -2292,7 +2901,10 @@ const DocumentEditor: React.FC = () => {
                       <SelectTrigger className="h-9 w-[200px] text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800">
                         <SelectValue placeholder="Select chat">
                           {currentChatSessionId 
-                            ? formatChatDate(availableChatSessions.find(s => s.id === currentChatSessionId)?.created_at || '')
+                            ? (() => {
+                                const session = availableChatSessions.find(s => s.id === currentChatSessionId);
+                                return session ? getChatDisplayName(session) : 'New Chat';
+                              })()
                             : 'New Chat'}
                         </SelectValue>
                       </SelectTrigger>
@@ -2302,9 +2914,26 @@ const DocumentEditor: React.FC = () => {
                       >
                         <SelectItem value="new">New Chat</SelectItem>
                         {availableChatSessions.map((session) => (
-                          <SelectItem key={session.id} value={session.id}>
-                            {formatChatDate(session.created_at)}
-                          </SelectItem>
+                          <div key={session.id} className="group relative">
+                            <SelectItem value={session.id} className="pr-8">
+                              <span className="truncate">{getChatDisplayName(session)}</span>
+                            </SelectItem>
+                            <button
+                              type="button"
+                              className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-accent rounded"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleEditChatName(e, session.id);
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                              }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         ))}
                       </SelectContent>
                     </Select>
@@ -2383,11 +3012,32 @@ const DocumentEditor: React.FC = () => {
                           </Button>
                         </div>
                       ) : (
-                        message.content.startsWith('data:image') ? (
-                          <img src={message.content} alt="Workspace capture" className="rounded-md max-w-full h-auto" />
-                        ) : (
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                        )
+                        (() => {
+                          // Check if message contains an image (either starts with data:image or contains it)
+                          const imageIndex = message.content.indexOf('data:image');
+                          const imageUrl = imageIndex !== -1 
+                            ? message.content.substring(imageIndex)
+                            : null;
+                          const textContent = imageUrl 
+                            ? message.content.substring(0, imageIndex).trim()
+                            : message.content;
+                          
+                          return (
+                            <div className="space-y-2">
+                              {textContent && (
+                                <p className="text-sm whitespace-pre-wrap">{textContent}</p>
+                              )}
+                              {imageUrl && (
+                                <img 
+                                  src={imageUrl} 
+                                  alt="User attachment" 
+                                  className="rounded-md max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" 
+                                  onClick={() => setExpandedChatImage(imageUrl)}
+                                />
+                              )}
+                            </div>
+                          );
+                        })()
                       )}
                     </div>
                   </div>
@@ -2406,33 +3056,75 @@ const DocumentEditor: React.FC = () => {
           
           {/* Input Area */}
           <div className="p-4 border-t border-gray-200 dark:border-border">
-            <form onSubmit={handleChatSubmit} className="flex gap-2">
+            {/* Image Preview */}
+            {pendingChatAttachment && (
+              <div className="mb-3 px-1">
+                <div className="border rounded-lg p-2 bg-muted/40 inline-flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Image Preview
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => setPendingChatAttachment(null)}
+                      aria-label="Remove attachment"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="rounded-md border overflow-hidden">
+                    <img
+                      src={pendingChatAttachment}
+                      alt="Attached image"
+                      className="w-44 h-auto block cursor-pointer hover:opacity-90 transition-opacity"
+                      onClick={() => setExpandedChatImage(pendingChatAttachment)}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <form onSubmit={handleChatSubmit} className="flex gap-1.5">
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder={chatMessages.length === 0 ? "Ask a question about the whiteboard..." : "Ask a follow-up question..."}
+                onPaste={handleChatPaste}
+                placeholder={pendingChatAttachment ? "Add a message for the AI..." : (chatMessages.length === 0 ? "Ask a question about the whiteboard..." : "Ask a follow-up question...")}
                 className="flex-1 px-3 py-2 border border-gray-300 dark:border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 bg-background dark:bg-input text-foreground"
                 disabled={isChatLoading}
               />
-              <Button
-                type="submit"
-                disabled={!chatInput.trim() || isChatLoading}
-                className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
+              {isChatLoading ? (
+                <Button
+                  type="button"
+                  onClick={handleStopResponse}
+                  className="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 text-white"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={(!chatInput.trim() && !pendingChatAttachment)}
+                  className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              )}
             </form>
             {chatMessages.length > 0 && (
-              <div className="mt-2 flex gap-2">
+              <div className="mt-1.5 flex gap-0.5 items-center">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={saveChatToSupabase}
-                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 h-6 px-1.5 py-0 hover:bg-transparent"
                 >
-                  <Save className="w-3 h-3 mr-1.5" />
-                  Save chat
+                  <Save className="w-3 h-3" />
+                  <span className="ml-1">Save Chat</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -2446,9 +3138,19 @@ const DocumentEditor: React.FC = () => {
                       }
                     }
                   }}
-                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 h-6 px-1.5 py-0 hover:bg-transparent"
                 >
-                  Clear chat history
+                  <Eraser className="w-3 h-3" />
+                  <span className="ml-1">Clear Conversation</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTokenLog(true)}
+                  className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 h-6 px-1.5 py-0 hover:bg-transparent"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span className="ml-1">Token Log</span>
                 </Button>
               </div>
             )}
@@ -2468,6 +3170,173 @@ const DocumentEditor: React.FC = () => {
         </div>
       </div>
 
+      {/* Token Usage Log Dialog - Higher z-index to appear above chat */}
+      {showTokenLog && (
+        <style>{`
+          [data-radix-dialog-overlay] {
+            z-index: 9999 !important;
+          }
+          [data-radix-dialog-content] {
+            z-index: 9999 !important;
+          }
+          .token-log-scrollable {
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE and Edge */
+          }
+          .token-log-scrollable::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Opera */
+          }
+        `}</style>
+      )}
+      <Dialog open={showTokenLog} onOpenChange={setShowTokenLog}>
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col" style={{ zIndex: 9999 }}>
+          <DialogHeader>
+            <DialogTitle>Token Usage Log</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto pr-6 token-log-scrollable">
+            {tokenLogs.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                No token usage data available yet.
+              </div>
+            ) : (
+              <div className="space-y-4 pr-2">
+                <div className="sticky top-0 bg-background dark:bg-card border-b pb-2 mb-4 z-10">
+                  <div className="grid grid-cols-5 gap-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                    <div>Timestamp</div>
+                    <div>Input Tokens</div>
+                    <div>Output Tokens</div>
+                    <div>Total</div>
+                    <div>Estimated Cost</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {tokenLogs.slice().reverse().map((log, index) => {
+                    const inputCost = log.inputTokens * 0.00000025;
+                    const outputCost = log.outputTokens * 0.000002;
+                    const totalCost = inputCost + outputCost;
+                    return (
+                      <div
+                        key={index}
+                        className="grid grid-cols-5 gap-4 text-sm border-b border-gray-200 dark:border-gray-700 pb-3 last:border-0"
+                      >
+                        <div className="text-gray-600 dark:text-gray-400">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </div>
+                        <div className="text-gray-700 dark:text-gray-300">
+                          {log.inputTokens.toLocaleString()}
+                        </div>
+                        <div className="text-gray-700 dark:text-gray-300">
+                          {log.outputTokens.toLocaleString()}
+                        </div>
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {(log.inputTokens + log.outputTokens).toLocaleString()}
+                        </div>
+                        <div className="text-gray-700 dark:text-gray-300">
+                          ${totalCost.toFixed(8)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">Total Tokens Used:</span>
+                    <span className="font-bold text-lg text-gray-900 dark:text-gray-100">
+                      {tokenLogs.reduce((sum, log) => sum + log.inputTokens + log.outputTokens, 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm mt-2">
+                    <span className="text-gray-600 dark:text-gray-400">Total Input Tokens:</span>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {tokenLogs.reduce((sum, log) => sum + log.inputTokens, 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm mt-2">
+                    <span className="text-gray-600 dark:text-gray-400">Total Output Tokens:</span>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {tokenLogs.reduce((sum, log) => sum + log.outputTokens, 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm mt-2">
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">Total Estimated Cost:</span>
+                    <span className="font-bold text-lg text-gray-900 dark:text-gray-100">
+                      ${(
+                        tokenLogs.reduce((sum, log) => sum + log.inputTokens * 0.00000025 + log.outputTokens * 0.000002, 0)
+                      ).toFixed(8)}
+                    </span>
+                  </div>
+                  {/* Plan-based usage progress bar */}
+                  {(() => {
+                    const totalCost = tokenLogs.reduce(
+                      (sum, log) => sum + log.inputTokens * 0.00000025 + log.outputTokens * 0.000002,
+                      0
+                    );
+                    
+                    // Define max dollar limits based on plan
+                    const maxDollarLimits: Record<string, number> = {
+                      free: 1,
+                      plus: 5,
+                      pro: 10,
+                      admin: Infinity,
+                    };
+                    
+                    const maxLimit = userPlan ? (maxDollarLimits[userPlan] ?? 1) : 1;
+                    const progressPercentage = maxLimit === Infinity ? 0 : Math.min((totalCost / maxLimit) * 100, 100);
+                    const planDisplayName = userPlan === 'admin' ? 'Admin' : userPlan ? userPlan.charAt(0).toUpperCase() + userPlan.slice(1) : 'Free';
+                    
+                    if (maxLimit === Infinity) {
+                      return null; // Don't show progress bar for admin/unlimited plans
+                    }
+                    
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div className="flex justify-between items-center text-sm mb-2">
+                          <span className="font-semibold text-gray-700 dark:text-gray-300">
+                            {planDisplayName} Plan Usage Limit
+                          </span>
+                          <span className={`font-semibold ${
+                            progressPercentage >= 90 
+                              ? 'text-red-600 dark:text-red-400' 
+                              : progressPercentage >= 70 
+                              ? 'text-yellow-600 dark:text-yellow-400' 
+                              : 'text-gray-700 dark:text-gray-300'
+                          }`}>
+                            ${totalCost.toFixed(2)} / ${maxLimit.toFixed(2)}
+                          </span>
+                        </div>
+                        <Progress 
+                          value={progressPercentage} 
+                          className={`h-3 ${
+                            progressPercentage >= 90 
+                              ? 'bg-red-100 dark:bg-red-900/30' 
+                              : progressPercentage >= 70 
+                              ? 'bg-yellow-100 dark:bg-yellow-900/30' 
+                              : ''
+                          }`}
+                        />
+                        <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          <span>{progressPercentage.toFixed(1)}% of limit used</span>
+                          {progressPercentage >= 90 && (
+                            <span className="text-red-600 dark:text-red-400 font-medium">
+                              Approaching limit
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTokenLog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Friend Chat Modal */}
       {showFriendChat && currentChatFriend && (
         <FriendChat
@@ -2485,27 +3354,68 @@ const DocumentEditor: React.FC = () => {
         />
       )}
 
-      {/* Call Interface */}
-      {(callState !== 'idle' || activeCallFriend || incomingCallFrom) && (
-        <CallInterface
-          friendId={activeCallFriend?.id}
-          friendName={activeCallFriend ? getDisplayName(activeCallFriend) : undefined}
-          friendAvatar={activeCallFriend?.image_url}
-          callState={callState}
-          incomingCallFrom={incomingCallFrom}
-          onAnswer={answerCall}
-          onReject={rejectCall}
-          onEnd={endCall}
-          onMute={muteCall}
-          onUnmute={unmuteCall}
-          isMuted={isMuted}
-          error={callError}
-          onCallEnd={() => {
-            setActiveCallFriend(null);
-          }}
-        />
+
+      {/* Edit Chat Name Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Chat Name</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={editingChatTitle}
+              onChange={(e) => setEditingChatTitle(e.target.value)}
+              placeholder="Enter chat name..."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleUpdateChatTitle();
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsEditDialogOpen(false);
+              setEditingChatId(null);
+              setEditingChatTitle('');
+            }}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateChatTitle}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Expanded Chat Image Dialog */}
+      {expandedChatImage && (
+        <style>{`
+          [data-radix-dialog-overlay] {
+            z-index: 200 !important;
+          }
+          [data-radix-dialog-content] {
+            z-index: 200 !important;
+          }
+        `}</style>
       )}
+      <Dialog open={!!expandedChatImage} onOpenChange={(open) => !open && setExpandedChatImage(null)}>
+        <DialogContent className="max-w-6xl max-h-[95vh] p-0 bg-transparent border-none shadow-none !z-[200]">
+          {expandedChatImage && (
+            <div className="relative w-full h-full flex items-center justify-center p-4">
+              <img
+                src={expandedChatImage}
+                alt="Expanded image"
+                className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
     </div>
+    </>
   );
 };
 

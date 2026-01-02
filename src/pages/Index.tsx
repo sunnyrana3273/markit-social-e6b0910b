@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Users, 
   Sparkles, 
@@ -15,14 +16,112 @@ import {
   Book,
   TrendingUp,
   Clock,
-  Award
+  Award,
+  Palette
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import peopleIcon from "@/assets/people.svg";
+import { useForceLightMode } from "@/hooks/useForceLightMode";
+import { supabase } from "@/integrations/supabase/client";
+import hisdLogo from "@/assets/hisdlogo.png";
+import utLogo from "@/assets/utlogo.png";
+import congressionalLogo from "@/assets/congressionalappchallengetranspo.png";
+import amLogo from "@/assets/a&mlogo.png";
 
 const Index = () => {
+  useForceLightMode();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [userImageUrl, setUserImageUrl] = useState<string | null>(null);
+  
   useEffect(() => {
     document.title = "MarkIt: Learning but better";
+    // Force light mode immediately on mount
+    const root = document.documentElement;
+    root.classList.remove('dark');
+    
+    // Also ensure CSS variables are applied
+    root.style.colorScheme = 'light';
+
+    // Check authentication status and verify user has completed onboarding
+    const checkAuth = async () => {
+      try {
+        setIsCheckingAuth(true);
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError || !session) {
+          setIsAuthenticated(false);
+          setUserImageUrl(null);
+          setIsCheckingAuth(false);
+          return;
+        }
+
+        // Verify session is valid by checking if user has a profile with username
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('image_url, username')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('[Index] Error fetching profile:', profileError);
+          setIsAuthenticated(false);
+          setUserImageUrl(null);
+          setIsCheckingAuth(false);
+          return;
+        }
+
+        // Only show Dashboard if user has completed onboarding (has username)
+        const hasCompletedOnboarding = !!profile?.username;
+        setIsAuthenticated(hasCompletedOnboarding);
+        setUserImageUrl(profile?.image_url || null);
+      } catch (error) {
+        console.error('[Index] Error checking auth:', error);
+        setIsAuthenticated(false);
+        setUserImageUrl(null);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session) {
+        setIsAuthenticated(false);
+        setUserImageUrl(null);
+        return;
+      }
+
+      // Verify user has completed onboarding
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('image_url, username')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('[Index] Error fetching profile on auth change:', profileError);
+          setIsAuthenticated(false);
+          setUserImageUrl(null);
+          return;
+        }
+
+        const hasCompletedOnboarding = !!profile?.username;
+        setIsAuthenticated(hasCompletedOnboarding);
+        setUserImageUrl(profile?.image_url || null);
+      } catch (error) {
+        console.error('[Index] Error checking profile on auth change:', error);
+        setIsAuthenticated(false);
+        setUserImageUrl(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -47,16 +146,20 @@ const Index = () => {
           </nav>
           
           <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
-            </Link>
-            <Link to="/auth">
-              <Button className="group relative overflow-hidden bg-gradient-to-r from-home-primary via-green-500 to-home-primary text-white font-semibold shadow-lg hover:shadow-xl hover:shadow-home-primary/50 transition-all duration-300 hover:scale-105 px-6">
-                <Sparkles className="w-4 h-4 mr-2 group-hover:rotate-12 transition-transform duration-300" />
-                Get Started
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
-              </Button>
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/app">
+                <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Dashboard</Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -76,7 +179,7 @@ const Index = () => {
               <h1 className="text-3xl lg:text-5xl font-bold text-home-foreground mb-6 leading-tight font-lexend">
                 MarkIt: Learning but
                 <br />
-                <span className="text-gradient font-homemade">better</span>
+                <span className="text-gradient font-cedarville inline-block text-5xl lg:text-8xl" style={{ marginTop: '0' }}>better</span>
               </h1>
               
               <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
@@ -84,13 +187,29 @@ const Index = () => {
                 and vibrant study communities. Built for the next generation of students.
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-4 mb-8 justify-center">
-                <Link to="/app">
-                  <Button size="lg" className="group bg-home-primary hover:bg-home-primary-hover text-white">
-                    Start a Study Session
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </Link>
+              <div className="flex flex-col sm:flex-row gap-4 mb-8 justify-center items-center">
+                {isAuthenticated ? (
+                  <div className="flex items-center gap-2">
+                    <Avatar className="w-10 h-10">
+                      <AvatarImage src={userImageUrl || undefined} alt="Profile" />
+                      <AvatarFallback>
+                        <Book className="w-5 h-5" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <Link to="/app">
+                      <Button size="lg" className="group bg-home-primary hover:bg-home-primary-hover text-white">
+                        Dashboard
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <Link to="/app">
+                    <Button size="lg" className="group bg-home-primary hover:bg-home-primary-hover text-white">
+                      Join your friends
+                      <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                )}
                 <Button
                   asChild
                   variant="outline"
@@ -124,6 +243,50 @@ const Index = () => {
                   <span className="ml-1">4.9 rating</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Endorsements Carousel */}
+      <section className="py-12 bg-white border-y border-gray-200">
+        <div className="container mx-auto px-4">
+          <h2 className="text-center text-3xl font-bold text-home-foreground mb-8">
+            Endorsed by students/organizations at leading institutions
+          </h2>
+          <div className="relative overflow-hidden">
+            <div className="flex animate-scroll items-center">
+              {/* Multiple sets for seamless infinite loop */}
+              {[
+                { src: hisdLogo, alt: "HISD Logo" },
+                { src: utLogo, alt: "UT Logo" },
+                { src: congressionalLogo, alt: "Congressional App Challenge" },
+                { src: amLogo, alt: "A&M Logo" },
+                { src: hisdLogo, alt: "HISD Logo" },
+                { src: utLogo, alt: "UT Logo" },
+                { src: congressionalLogo, alt: "Congressional App Challenge" },
+                { src: amLogo, alt: "A&M Logo" },
+                { src: hisdLogo, alt: "HISD Logo" },
+                { src: utLogo, alt: "UT Logo" },
+                { src: congressionalLogo, alt: "Congressional App Challenge" },
+                { src: amLogo, alt: "A&M Logo" },
+              ].map((logo, index) => (
+                <div
+                  key={index}
+                  className="flex-shrink-0 flex items-center justify-center"
+                  style={{ 
+                    width: '200px', 
+                    height: '80px',
+                    marginRight: index % 4 === 3 ? '0' : '4rem'
+                  }}
+                >
+                  <img
+                    src={logo.src}
+                    alt={logo.alt}
+                    className="max-w-full max-h-full object-contain opacity-70 hover:opacity-100 transition-opacity"
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -169,7 +332,7 @@ const Index = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <TrendingUp className="w-4 h-4" />
-                    <span>98% Accuracy</span>
+                    <span>95% Accuracy</span>
                   </div>
                 </div>
               </div>
@@ -222,7 +385,7 @@ const Index = () => {
             </Card>
 
             {/* Gamified Learning - Stats Card Style */}
-            <Card className="p-6 bg-gradient-to-br from-yellow-50 via-orange-50 to-white hover:shadow-xl transition-all duration-300 group cursor-pointer border-2 border-yellow-200 hover:border-yellow-400 w-full max-w-sm">
+            <Card className="p-6 bg-gradient-to-br from-yellow-50 via-orange-50 to-white hover:shadow-xl transition-all duration-300 group cursor-pointer border-2 border-yellow-200 hover:border-yellow-400 relative">
               <div className="flex items-start justify-between mb-4">
                 <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
                   <Gamepad2 className="w-6 h-6 text-yellow-600" />
@@ -248,7 +411,7 @@ const Index = () => {
             </Card>
 
             {/* AP Course Communities - Vertical with Icon Badge */}
-            <Card className="p-6 bg-white hover:bg-gradient-to-br hover:from-purple-50 hover:via-blue-50 hover:to-transparent transition-all duration-300 hover:shadow-lg group cursor-pointer border border-gray-200 hover:border-purple-300 relative lg:col-start-1 lg:col-end-3 lg:justify-self-center w-full max-w-sm">
+            <Card className="p-6 bg-white hover:bg-gradient-to-br hover:from-purple-50 hover:via-blue-50 hover:to-transparent transition-all duration-300 hover:shadow-lg group cursor-pointer border border-gray-200 hover:border-purple-300 relative">
               <div className="absolute top-0 right-0 w-20 h-20 bg-purple-100/50 rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="relative z-10">
                 <div className="flex items-center gap-3 mb-4">
@@ -273,206 +436,31 @@ const Index = () => {
                 </div>
               </div>
                 </Card>
-          </div>
-        </div>
-      </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20 bg-white scroll-mt-16">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-home-foreground mb-4">
-              Choose Your Plan
-            </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Start free and upgrade as you grow. All plans include core features.
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {/* Free Plan */}
-            <Card className="p-8 bg-home-surface border-gray-200">
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-home-foreground mb-2">Free</h3>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-4xl font-bold text-home-foreground">$0</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <p className="text-gray-600">Perfect for getting started</p>
-              </div>
-              
-              <Link to="/auth">
-                <Button variant="outline" className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                  Get Started
-                </Button>
-              </Link>
-              
-              <div className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
+            {/* Customize Study Environment */}
+            <Card className="p-6 bg-gradient-to-br from-pink-50 via-rose-50 to-white hover:shadow-xl transition-all duration-300 group cursor-pointer border-2 border-pink-200 hover:border-pink-400 relative">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-pink-100/30 rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 bg-pink-100 rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 group-hover:rotate-6 transition-all duration-300">
+                    <Palette className="w-6 h-6 text-pink-600" />
                   </div>
-                  <span className="text-sm text-gray-600">5 AI assistance queries/day</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                <h3 className="text-xl font-semibold text-home-foreground mb-2">
+                  Customize your study environment
+                </h3>
+                <p className="text-gray-600 leading-relaxed text-sm mb-4">
+                  Select from themes, colors, and build the coziest study spot.
+                </p>
+                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-pink-100">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-pink-600">Customizable</div>
+                    <div className="text-xs text-gray-500">Themes</div>
                   </div>
-                  <span className="text-sm text-gray-600">Basic whiteboard tools</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-pink-600">Unlimited</div>
+                    <div className="text-xs text-gray-500">Colors</div>
                   </div>
-                  <span className="text-sm text-gray-600">Up to 3 collaborators</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Public communities access</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">1 GB storage</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Plus Plan */}
-            <Card className="p-8 bg-white border-2 border-home-primary relative">
-              <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                <Badge className="bg-home-primary text-white">Most Popular</Badge>
-              </div>
-              
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-home-foreground mb-2">Plus</h3>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-4xl font-bold text-home-foreground">$7</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <p className="text-gray-600">For serious learners</p>
-              </div>
-              
-              <Link to="/auth">
-                <Button className="w-full mb-6 bg-home-primary hover:bg-home-primary-hover text-white">
-                  Get Started
-                </Button>
-              </Link>
-              
-              <div className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">50 AI assistance queries/day</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Advanced whiteboard tools</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Up to 10 collaborators</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Voice calls enabled</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Priority community support</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">10 GB storage</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Custom themes</span>
-                </div>
-              </div>
-            </Card>
-
-            {/* Pro Plan */}
-            <Card className="p-8 bg-home-surface border-gray-200">
-              <div className="mb-6">
-                <h3 className="text-2xl font-bold text-home-foreground mb-2">Pro</h3>
-                <div className="flex items-baseline gap-1 mb-4">
-                  <span className="text-4xl font-bold text-home-foreground">$15</span>
-                  <span className="text-gray-600">/month</span>
-                </div>
-                <p className="text-gray-600">For power users & groups</p>
-              </div>
-              
-              <Link to="/auth">
-                <Button variant="outline" className="w-full mb-6 border-home-primary text-home-primary hover:bg-home-primary hover:text-white">
-                  Get Started
-                </Button>
-              </Link>
-              
-              <div className="space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Unlimited AI assistance</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Premium whiteboard tools</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Unlimited collaborators</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Voice & video calls</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Private communities</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">100 GB storage</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Advanced analytics</span>
-                </div>
-                <div className="flex items-start gap-2">
-                  <div className="w-5 h-5 rounded-full bg-home-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <ChevronRight className="w-3 h-3 text-home-primary" />
-                  </div>
-                  <span className="text-sm text-gray-600">Priority support 24/7</span>
                 </div>
               </div>
             </Card>

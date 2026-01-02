@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,13 +16,36 @@ import {
   TrendingUp,
   CheckCircle2,
   ChevronRight,
-  Book
+  Book,
+  Palette
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useForceLightMode } from "@/hooks/useForceLightMode";
+import { supabase } from "@/integrations/supabase/client";
 
 const Features = () => {
+  useForceLightMode();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
   useEffect(() => {
     document.title = "MarkIt | Features";
+
+    // Check authentication status
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setIsAuthenticated(!!session);
+    };
+
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -47,12 +70,20 @@ const Features = () => {
           </nav>
           
           <div className="flex items-center gap-3">
-            <Link to="/auth">
-              <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
-            </Link>
-            <Link to="/auth">
-              <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
-            </Link>
+            {isAuthenticated ? (
+              <Link to="/app">
+                <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Dashboard</Button>
+              </Link>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" className="text-home-foreground hover:bg-home-surface">Sign In</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="bg-home-primary hover:bg-home-primary-hover text-white">Get Started</Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -71,11 +102,11 @@ const Features = () => {
             <h1 className="text-4xl lg:text-6xl font-bold text-home-foreground mb-6 leading-tight">
               Everything you need to
               <br />
-              <span className="text-gradient font-homemade">excel in learning</span>
+              <span className="text-gradient font-cedarville">excel in learning</span>
             </h1>
             
             <p className="text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl mx-auto">
-              MarkIt combines AI-powered assistance, real-time collaboration, and engaging study tools 
+              MarkIt combines AI-powered assistance and engaging study tools 
               to create the ultimate learning platform for students.
             </p>
             
@@ -110,12 +141,6 @@ const Features = () => {
                 features: ["Image recognition", "Step-by-step solutions", "Multiple subject support", "Natural language interaction"]
               },
               {
-                icon: Users,
-                title: "Real-time Collaboration", 
-                description: "Work together seamlessly with friends. See live cursors, changes, and presence indicators as you study together on the same whiteboard.",
-                features: ["Live cursor tracking", "Instant synchronization", "Presence indicators", "Conflict-free editing"]
-              },
-              {
                 icon: MessageSquare,
                 title: "Smart Chat System",
                 description: "DM friends, create study groups, and get help in context-aware conversations. AI understands your study context and provides relevant assistance.",
@@ -125,7 +150,7 @@ const Features = () => {
                 icon: Video,
                 title: "Voice Calls",
                 description: "Jump into high-quality voice calls instantly during study sessions. Perfect for explaining complex problems or group study.",
-                features: ["HD video calls", "Crystal-clear audio", "Screen sharing", "Recording options"]
+                features: ["Crystal-clear audio", "Wideband quality", "24/7 available", "Instant connection"]
               },
               {
                 icon: Target,
@@ -138,6 +163,12 @@ const Features = () => {
                 title: "Gamified Learning",
                 description: "Stay motivated with achievement badges, study streaks, leaderboards, and challenges. Make learning fun while tracking your progress.",
                 features: ["Daily streaks", "Achievement badges", "Leaderboards", "Study challenges"]
+              },
+              {
+                icon: Palette,
+                title: "Customize Your Study Environment",
+                description: "Select from themes, colors, and build the coziest study spot. Personalize your workspace to match your style and preferences.",
+                features: ["12+ themes", "Unlimited colors", "Dark mode", "Custom backgrounds"]
               }
             ].map((feature, index) => {
               const IconComponent = feature.icon;

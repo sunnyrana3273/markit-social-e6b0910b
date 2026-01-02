@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import ReportIssueFooter from "@/components/ReportIssueFooter";
 
 const NotFound = () => {
   const location = useLocation();
@@ -18,6 +19,7 @@ const NotFound = () => {
           Return to Home
         </a>
       </div>
+      <ReportIssueFooter />
     </div>
   );
 };

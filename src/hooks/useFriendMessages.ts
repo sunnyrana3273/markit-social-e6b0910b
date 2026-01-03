@@ -137,14 +137,11 @@ export const useFriendMessages = (currentUserId: string | null, friendId: string
 
   // Function to append a new message to cache (for real-time updates)
   const appendMessage = (message: Message) => {
-    console.log('[useFriendMessages] Appending message to cache:', message.id, message.message.substring(0, 50));
     queryClient.setQueryData<Message[]>(queryKey, (old = []) => {
       // Check if message already exists (avoid duplicates)
       if (old.some(m => m.id === message.id)) {
-        console.log('[useFriendMessages] Message already in cache, skipping');
         return old;
       }
-      console.log('[useFriendMessages] Adding new message to cache, total messages:', old.length + 1);
       const updated = [...old, message];
       return updated;
     });

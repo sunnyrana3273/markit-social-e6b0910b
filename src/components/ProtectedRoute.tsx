@@ -20,7 +20,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   useEffect(() => {
     // Prevent multiple simultaneous checks
     if (isCheckingRef.current) {
-      console.log('[ProtectedRoute] Already checking auth, skipping...');
       return;
     }
 
@@ -39,7 +38,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
     const checkAuthAndUsername = async () => {
       isCheckingRef.current = true;
-      console.log('[ProtectedRoute] Starting auth check...');
       
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -53,15 +51,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           return;
         }
         
-        console.log('[ProtectedRoute] Session check result:', { 
-          hasSession: !!session, 
-          userId: session?.user?.id,
-          expiresAt: session?.expires_at,
-          path: location.pathname 
-        });
-        
         if (!session) {
-          console.log('[ProtectedRoute] No session found, redirecting to auth');
           setIsAuthenticated(false);
           setIsLoading(false);
           isLoadingRef.current = false;
@@ -76,7 +66,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           // Add 5 minute buffer to account for clock skew
           const bufferTime = 5 * 60 * 1000; // 5 minutes in milliseconds
           if (expiresAt.getTime() < (now.getTime() + bufferTime)) {
-            console.log('[ProtectedRoute] Session expired or expiring soon, redirecting to login');
             // Clear the expired session
             await supabase.auth.signOut();
             setIsAuthenticated(false);
@@ -101,7 +90,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
             // PGRST116 is "no rows returned" which is fine, but other errors mean auth failed
             console.error('[ProtectedRoute] Session validation failed:', testError);
             if (testError.message?.includes('JWT') || testError.message?.includes('token') || testError.message?.includes('expired')) {
-              console.log('[ProtectedRoute] Session invalid (JWT error), redirecting to login');
               await supabase.auth.signOut();
               setIsAuthenticated(false);
               setIsLoading(false);
@@ -114,7 +102,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           console.error('[ProtectedRoute] Session validation error:', validationError);
           // If validation fails, assume session is invalid
           if (validationError?.message?.includes('JWT') || validationError?.message?.includes('token') || validationError?.message?.includes('expired')) {
-            console.log('[ProtectedRoute] Session invalid, redirecting to login');
             await supabase.auth.signOut();
             setIsAuthenticated(false);
             setIsLoading(false);
@@ -127,8 +114,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         setIsAuthenticated(true);
 
         // Check if user has a username
-        console.log('[ProtectedRoute] Checking username for user:', session.user.id);
-        
         let timeoutId: NodeJS.Timeout | null = null;
         let queryCompleted = false;
         
@@ -165,20 +150,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
             return;
           }
 
-          console.log('[ProtectedRoute] Profile check result:', { 
-            hasProfile: !!profile, 
-            username: profile?.username,
-            usernameType: typeof profile?.username,
-            usernameLength: profile?.username?.length,
-            hasUsername: !!(profile?.username && profile.username.trim().length > 0)
-          });
-
           // Check if username exists and is not empty/null
           if (!profile?.username || profile.username.trim().length === 0) {
-            console.log('[ProtectedRoute] User needs username (missing or empty), setting needsUsername=true');
             setNeedsUsername(true);
           } else {
-            console.log('[ProtectedRoute] User has username:', profile.username);
             setNeedsUsername(false);
           }
 
@@ -210,17 +185,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     // Listen for page visibility changes (user returning to tab)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && !isCheckingRef.current) {
-        const timeAway = Date.now() - lastActiveTimeRef.current;
-        const longDuration = 30 * 60 * 1000; // 30 minutes
-        
-        console.log('[ProtectedRoute] Page became visible, re-checking auth state...', { 
-          timeAway: Math.round(timeAway / 1000 / 60) + ' minutes' 
-        });
-        
-        // Always re-check when returning, but log if it was a long duration
-        if (timeAway > longDuration) {
-          console.log('[ProtectedRoute] User was away for extended period (' + Math.round(timeAway / 1000 / 60) + ' min), forcing auth re-check');
-        }
         hasCheckedRef.current = false;
         checkAuthAndUsername();
       } else if (document.visibilityState === 'hidden') {
@@ -232,16 +196,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     // Listen for window focus (user returning to window)
     const handleFocus = () => {
       if (!isCheckingRef.current) {
-        const timeAway = Date.now() - lastActiveTimeRef.current;
-        const longDuration = 30 * 60 * 1000; // 30 minutes
-        
-        console.log('[ProtectedRoute] Window focused, re-checking auth state...', { 
-          timeAway: Math.round(timeAway / 1000 / 60) + ' minutes' 
-        });
-        
-        if (timeAway > longDuration) {
-          console.log('[ProtectedRoute] User was away for extended period (' + Math.round(timeAway / 1000 / 60) + ' min), forcing auth re-check');
-        }
         hasCheckedRef.current = false;
         checkAuthAndUsername();
       }
@@ -261,16 +215,12 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
     // Listen for auth changes - but only update state, don't trigger full re-check
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[ProtectedRoute] Auth state changed:', { event, hasSession: !!session, path: location.pathname });
-      
       // Prevent processing if already checking
       if (isCheckingRef.current) {
-        console.log('[ProtectedRoute] Already checking, skipping auth state change handler');
         return;
       }
       
       if (!session) {
-        console.log('[ProtectedRoute] Session lost, setting authenticated=false');
         setIsAuthenticated(false);
         setNeedsUsername(false);
         setIsLoading(false);
@@ -284,7 +234,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       // Only check username if we haven't checked yet or if it's a sign in event
       if (!hasCheckedRef.current || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         isCheckingRef.current = true;
-        console.log('[ProtectedRoute] Checking username on auth state change');
         
         // Add timeout to prevent hanging
         const timeoutId = setTimeout(() => {
@@ -314,10 +263,8 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
           // Check if username exists and is not empty/null
           if (!profile?.username || profile.username.trim().length === 0) {
-            console.log('[ProtectedRoute] User needs username (missing or empty, from auth change)');
             setNeedsUsername(true);
           } else {
-            console.log('[ProtectedRoute] User has username:', profile.username, '(from auth change)');
             setNeedsUsername(false);
           }
           setIsLoading(false);
@@ -335,7 +282,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     });
 
     return () => {
-      console.log('[ProtectedRoute] Cleaning up auth listener');
       clearTimeout(safetyTimeout);
       subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -345,13 +291,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       document.removeEventListener('click', updateLastActive);
     };
   }, []); // Remove location.pathname dependency to prevent re-checks on every navigation
-
-  console.log('[ProtectedRoute] Render state:', { 
-    isLoading, 
-    isAuthenticated, 
-    needsUsername, 
-    path: location.pathname 
-  });
 
   if (isLoading) {
     return (
@@ -365,16 +304,13 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (!isAuthenticated) {
-    console.log('[ProtectedRoute] Not authenticated, redirecting to /auth');
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   if (needsUsername) {
-    console.log('[ProtectedRoute] Needs username, redirecting to /onboarding');
     return <Navigate to="/onboarding" replace />;
   }
 
-  console.log('[ProtectedRoute] All checks passed, rendering children');
   return <>{children}</>;
 };
 

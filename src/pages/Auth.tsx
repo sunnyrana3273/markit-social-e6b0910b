@@ -21,8 +21,6 @@ const Auth = () => {
     
     // Check if user is already logged in and if they need onboarding
     const checkAuth = async () => {
-      console.log('[Auth] Checking existing session...');
-      
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
@@ -32,12 +30,9 @@ const Auth = () => {
         }
         
         if (!session || !isMounted) {
-          console.log('[Auth] No session found');
           return;
         }
 
-        console.log('[Auth] Session found, checking username:', { userId: session.user.id });
-        
         // Check if user has completed onboarding (has username)
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
@@ -53,10 +48,8 @@ const Auth = () => {
         if (!isMounted) return;
 
         if (!profile?.username) {
-          console.log('[Auth] User needs username, redirecting to onboarding');
           navigate('/onboarding');
         } else {
-          console.log('[Auth] User has username, redirecting to app');
           navigate('/app');
         }
       } catch (error) {
@@ -68,13 +61,9 @@ const Auth = () => {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[Auth] Auth state changed:', { event, hasSession: !!session });
-      
       if (!isMounted) return;
       
       if (event === 'SIGNED_IN' && session) {
-        console.log('[Auth] User signed in, checking username');
-        
         try {
           // Check if user needs onboarding
           const { data: profile, error: profileError } = await supabase
@@ -91,17 +80,13 @@ const Auth = () => {
           if (!isMounted) return;
 
           if (!profile?.username) {
-            console.log('[Auth] User needs username, redirecting to onboarding');
             navigate('/onboarding');
           } else {
-            console.log('[Auth] User has username, redirecting to app');
             navigate('/app');
           }
         } catch (error) {
           console.error('[Auth] Error handling sign in:', error);
         }
-      } else if (event === 'SIGNED_OUT') {
-        console.log('[Auth] User signed out');
       }
     });
 

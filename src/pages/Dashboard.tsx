@@ -178,7 +178,6 @@ const Dashboard = () => {
           console.error('Error fetching profile:', error);
         } else if (!profileData) {
           // No profile exists, create one
-          console.log('No profile found for user, creating one...');
           const { error: createError } = await supabase
             .from('profiles')
             .insert({

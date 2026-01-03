@@ -34,8 +34,6 @@ const Onboarding = () => {
   useEffect(() => {
     document.title = "MarkIt | Onboarding";
     const initializeOnboarding = async () => {
-      console.log('[Onboarding] Initializing onboarding...');
-      
       // Wait a bit for auth callback to process if coming from OAuth redirect
       await new Promise(resolve => setTimeout(resolve, 100));
       
@@ -51,7 +49,6 @@ const Onboarding = () => {
         sessionError = result.error || null;
         
         if (!session && sessionRetries < maxRetries - 1) {
-          console.log(`[Onboarding] No session yet, retrying... (${sessionRetries + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, 200));
           sessionRetries++;
         } else {
@@ -66,12 +63,10 @@ const Onboarding = () => {
       }
       
       if (!session) {
-        console.log('[Onboarding] No session after retries, redirecting to auth');
         navigate('/auth');
         return;
       }
 
-      console.log('[Onboarding] Session found:', { userId: session.user.id });
       setUserId(session.user.id);
 
       // Check if user already has username set - retry a few times in case profile hasn't been created yet
@@ -92,7 +87,6 @@ const Onboarding = () => {
         
         if (profileError && profileError.code !== 'PGRST116' && profileRetries < maxProfileRetries - 1) {
           // PGRST116 means no rows returned, which is fine - profile might not exist yet
-          console.log(`[Onboarding] Profile error, retrying... (${profileRetries + 1}/${maxProfileRetries}):`, profileError.message);
           await new Promise(resolve => setTimeout(resolve, 300));
           profileRetries++;
         } else {
@@ -105,23 +99,11 @@ const Onboarding = () => {
         // Continue with onboarding if there's an error - user can still set username
       }
 
-      console.log('[Onboarding] Profile check result:', { 
-        hasProfile: !!profile, 
-        username: profile?.username,
-        usernameType: typeof profile?.username,
-        usernameLength: profile?.username?.length,
-        usernameTruthy: !!profile?.username,
-        usernameTrimmed: profile?.username?.trim()
-      });
-
       // Check if username exists and is not empty/null
       if (profile?.username && typeof profile.username === 'string' && profile.username.trim().length > 0) {
-        console.log('[Onboarding] User already has username:', profile.username, '- redirecting to app');
         navigate('/app', { replace: true });
         return;
       }
-      
-      console.log('[Onboarding] User needs username (username is missing or empty), continuing onboarding');
 
       // Fetch available communities
       const { data: communitiesData, error } = await supabase
@@ -185,7 +167,6 @@ const Onboarding = () => {
     }
 
     setIsSubmitting(true);
-    console.log('[Onboarding] Submitting username:', username, 'for user:', userId);
 
     try {
       if (!userId) {
@@ -202,7 +183,6 @@ const Onboarding = () => {
         throw error;
       }
 
-      console.log('[Onboarding] Username updated successfully');
       toast({
         title: "Success",
         description: "Username created successfully!",
@@ -235,7 +215,6 @@ const Onboarding = () => {
 
   const handleFinish = async () => {
     setIsSubmitting(true);
-    console.log('[Onboarding] Finishing onboarding for user:', userId);
 
     try {
       if (!userId) {
@@ -244,7 +223,6 @@ const Onboarding = () => {
 
       // Join selected communities
       if (selectedCommunities.size > 0) {
-        console.log('[Onboarding] Joining communities:', Array.from(selectedCommunities));
         const memberships = Array.from(selectedCommunities).map(communityId => ({
           user_id: userId,
           community_id: communityId
@@ -258,10 +236,8 @@ const Onboarding = () => {
           console.error('[Onboarding] Error joining communities:', error);
           throw error;
         }
-        console.log('[Onboarding] Successfully joined communities');
       }
 
-      console.log('[Onboarding] Onboarding complete, navigating to app');
       toast({
         title: "Welcome!",
         description: "Your account is all set up",

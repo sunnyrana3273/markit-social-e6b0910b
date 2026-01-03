@@ -145,13 +145,11 @@ export function FriendChat({
     
     // Prevent duplicate initialization for the same user/friend combination
     if (initializedKeyRef.current === initKey) {
-      console.log('[FriendChat] Subscription already initialized for', initKey);
       return;
     }
     initializedKeyRef.current = initKey;
 
     const channelName = `friend-chat-${[currentUserId, friendId].sort().join('-')}`;
-    console.log('[FriendChat] Setting up real-time subscription for channel:', channelName);
 
     const channel = supabase
       .channel(channelName, {
@@ -167,14 +165,6 @@ export function FriendChat({
           table: "friend_messages",
         },
         (payload) => {
-          console.log('[FriendChat] Real-time INSERT event received:', {
-            messageId: payload.new?.id,
-            senderId: payload.new?.sender_id,
-            receiverId: payload.new?.receiver_id,
-            currentUserId,
-            friendId
-          });
-          
           const newMessage = payload.new as Message;
           
           // Only process messages between current user and this friend
@@ -183,13 +173,11 @@ export function FriendChat({
             (newMessage.sender_id === friendId && newMessage.receiver_id === currentUserId);
           
           if (!isRelevantMessage) {
-            console.log('[FriendChat] Ignoring message - not for this conversation');
             return;
           }
           
           // If it's a message FROM friend TO current user, append it
           if (newMessage.sender_id === friendId && newMessage.receiver_id === currentUserId) {
-            console.log('[FriendChat] Message from friend - appending to cache');
             // Use ref to avoid stale closure
             appendMessageRef.current(newMessage);
             
@@ -202,30 +190,20 @@ export function FriendChat({
             setTimeout(() => {
               markAsReadRef.current(newMessage.id);
             }, 500);
-          } else if (newMessage.sender_id === currentUserId && newMessage.receiver_id === friendId) {
-            // This is our own message - the mutation should handle it
-            console.log('[FriendChat] Received confirmation of our own message');
-            // The mutation's onSuccess will handle replacing the optimistic message
           }
         }
       )
       .subscribe((status) => {
-        console.log('[FriendChat] Subscription status:', status);
         setIsConnected(status === "SUBSCRIBED");
         
-        if (status === "SUBSCRIBED") {
-          console.log('[FriendChat] ✅ Successfully subscribed to real-time updates');
-        } else if (status === "CHANNEL_ERROR") {
-          console.error('[FriendChat] ❌ Channel subscription error');
+        if (status === "CHANNEL_ERROR") {
+          console.error('[FriendChat] Channel subscription error');
         } else if (status === "TIMED_OUT") {
-          console.error('[FriendChat] ⏱️ Subscription timed out');
-        } else if (status === "CLOSED") {
-          console.log('[FriendChat] 🔒 Channel closed');
+          console.error('[FriendChat] Subscription timed out');
         }
       });
 
     return () => {
-      console.log('[FriendChat] Cleaning up subscription');
       supabase.removeChannel(channel);
       // Reset the initialized key when cleanup runs
       if (initializedKeyRef.current === initKey) {

@@ -590,12 +590,6 @@ app.post('/api/generate-question', strictLimiter, requireUser(), async (req, res
       ? `${baseInstructions}\n\nAdditional context from a worked solution (do NOT copy it, just use as guidance for topic and difficulty):\n${contextSnippet.substring(0, 2000)}`
       : baseInstructions;
 
-    console.log('[generate-question] Request received', {
-      imageLength: typeof image === 'string' ? image.length : null,
-      promptLength: prompt.length,
-      hasContext: !!contextSnippet,
-    });
-
     // Primary attempt: Vision completion with image
     const response = await openai.chat.completions.create({
       model: "gpt-5-mini-2025-08-07",
@@ -616,18 +610,7 @@ app.post('/api/generate-question', strictLimiter, requireUser(), async (req, res
       max_completion_tokens: 4000,
     });
 
-    // Debug: log full primary response (without API key)
-    try {
-      console.log('[generate-question] Primary OpenAI response raw:', JSON.stringify(response, null, 2));
-    } catch (e) {
-      console.warn('[generate-question] Failed to stringify primary response', e);
-    }
-
     const choice = response?.choices?.[0]?.message?.content;
-    console.log('[generate-question] OpenAI response meta', {
-      choices: Array.isArray(response?.choices) ? response.choices.length : 0,
-      hasContent: !!choice,
-    });
 
     if (choice && choice.trim()) {
       const question = choice.trim();
@@ -649,15 +632,8 @@ app.post('/api/generate-question', strictLimiter, requireUser(), async (req, res
       ],
       max_completion_tokens: 4000,
     });
-    // Debug: log extraction response
-    try {
-      console.log('[generate-question] Extract OpenAI response raw:', JSON.stringify(extractResp, null, 2));
-    } catch (e) {
-      console.warn('[generate-question] Failed to stringify extract response', e);
-    }
 
     const extracted = extractResp?.choices?.[0]?.message?.content || '';
-    console.log('[generate-question] Extracted text length', extracted.length);
 
     // Fallback #2: Generate from extracted text (text-only)
     const textOnlyPrompt = [
@@ -677,15 +653,8 @@ app.post('/api/generate-question', strictLimiter, requireUser(), async (req, res
       ],
       max_completion_tokens: 600,
     });
-    // Debug: log text-only generation response
-    try {
-      console.log('[generate-question] Text-only OpenAI response raw:', JSON.stringify(textOnlyResp, null, 2));
-    } catch (e) {
-      console.warn('[generate-question] Failed to stringify text-only response', e);
-    }
 
     const textOnlyChoice = textOnlyResp?.choices?.[0]?.message?.content || '';
-    console.log('[generate-question] Text-only generation content length', textOnlyChoice.length);
 
     if (textOnlyChoice && textOnlyChoice.trim()) {
       const question = textOnlyChoice.trim();
@@ -815,22 +784,6 @@ app.post('/api/twilio/voice', (req, res) => {
     // Twilio sends form-encoded data, so we need to parse it from req.body
     const To = req.body.To || req.body.to;
     const From = req.body.From || req.body.from;
-    const CallSid = req.body.CallSid || req.body.CallSid;
-    
-    console.log('═══════════════════════════════════════════════════════');
-    console.log('[Twilio Voice] 📞📞📞 RECEIVED TWiML REQUEST 📞📞📞');
-    console.log('[Twilio Voice] Request details:', { 
-      To, 
-      From, 
-      CallSid,
-      body: req.body,
-      headers: req.headers['content-type'],
-      method: req.method,
-      url: req.url,
-      ip: req.ip
-    });
-    console.log('[Twilio Voice] Full request body:', JSON.stringify(req.body, null, 2));
-    console.log('═══════════════════════════════════════════════════════');
     
     // Get the TwiML response object
     const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -844,18 +797,13 @@ app.post('/api/twilio/voice', (req, res) => {
         callerId: From, // The caller's identity
       });
       dial.client(To); // The recipient's identity (user ID)
-      console.log('[Twilio Voice] Dialing client:', To, 'from:', From);
     } else {
       // Fallback if no "To" parameter
-      console.warn('[Twilio Voice] No "To" parameter provided. Request body:', req.body);
+      console.warn('[Twilio Voice] No "To" parameter provided');
       response.say('No recipient specified');
     }
     
     const twimlResponse = response.toString();
-    console.log('[Twilio Voice] ✅ Sending TwiML response:');
-    console.log('[Twilio Voice] TwiML:', twimlResponse);
-    console.log('[Twilio Voice] Response will dial client:', To);
-    console.log('═══════════════════════════════════════════════════════');
     
     // Set content type and send TwiML response
     res.type('text/xml');
@@ -1000,26 +948,10 @@ app.post('/api/moderate-content', async (req, res) => {
       reason = reasons.join(', ');
     }
 
-    // Log moderation attempt for audit
-    console.log('[Moderation] Content checked:', {
-      contentType,
-      textLength: validatedText.length,
-      hasImage: !!image,
-      isBlocked,
-      reason,
-      categories: {
-        sexual: result.categories.sexual,
-        'sexual/minors': result.categories['sexual/minors'],
-        hate: result.categories.hate,
-        'hate/threatening': result.categories['hate/threatening'],
-        harassment: result.categories.harassment,
-        'harassment/threatening': result.categories['harassment/threatening'],
-        violence: result.categories.violence,
-        'violence/graphic': result.categories['violence/graphic'],
-        'self-harm': result.categories['self-harm'],
-        flagged: result.flagged
-      }
-    });
+    // Log moderation attempt for audit (only if blocked)
+    if (isBlocked) {
+      console.warn('[Moderation] Content blocked:', { contentType, reason });
+    }
 
     res.json({
       success: true,
@@ -1059,14 +991,6 @@ app.post('/api/twilio/token', async (req, res) => {
   try {
     const { userId } = req.body;
 
-    console.log('[Twilio Token] Request received:', { 
-      userId: userId ? `${userId.substring(0, 8)}...` : 'missing',
-      hasAccountSid: !!TWILIO_ACCOUNT_SID,
-      hasApiKey: !!TWILIO_API_KEY,
-      hasApiSecret: !!TWILIO_API_SECRET,
-      hasAppSid: !!TWILIO_APP_SID
-    });
-
     // Validate UUID format
     const validation = validateInput(uuidSchema, userId);
     if (!validation.success) {
@@ -1081,12 +1005,7 @@ app.post('/api/twilio/token', async (req, res) => {
 
     // Check if Twilio credentials are configured
     if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET || !TWILIO_APP_SID) {
-      console.error('[Twilio Token] ❌ Missing Twilio credentials:', {
-        hasAccountSid: !!TWILIO_ACCOUNT_SID,
-        hasApiKey: !!TWILIO_API_KEY,
-        hasApiSecret: !!TWILIO_API_SECRET,
-        hasAppSid: !!TWILIO_APP_SID
-      });
+      console.error('[Twilio Token] Missing Twilio credentials');
       return res.status(500).json({ 
         success: false, 
         error: 'Twilio is not configured. Please set up Twilio credentials in environment variables.' 
@@ -1095,7 +1014,7 @@ app.post('/api/twilio/token', async (req, res) => {
 
     // Validate credential formats
     if (!TWILIO_ACCOUNT_SID.startsWith('AC') || TWILIO_ACCOUNT_SID.length !== 34) {
-      console.error('[Twilio Token] ❌ Invalid Account SID format');
+      console.error('[Twilio Token] Invalid Account SID format');
       return res.status(500).json({ 
         success: false, 
         error: 'Invalid Twilio Account SID format' 
@@ -1103,7 +1022,7 @@ app.post('/api/twilio/token', async (req, res) => {
     }
 
     if (!TWILIO_API_KEY.startsWith('SK') || TWILIO_API_KEY.length < 30) {
-      console.error('[Twilio Token] ❌ Invalid API Key format');
+      console.error('[Twilio Token] Invalid API Key format');
       return res.status(500).json({ 
         success: false, 
         error: 'Invalid Twilio API Key format' 
@@ -1111,14 +1030,12 @@ app.post('/api/twilio/token', async (req, res) => {
     }
 
     if (!TWILIO_APP_SID.startsWith('AP') || TWILIO_APP_SID.length !== 34) {
-      console.error('[Twilio Token] ❌ Invalid App SID format');
+      console.error('[Twilio Token] Invalid App SID format');
       return res.status(500).json({ 
         success: false, 
         error: 'Invalid Twilio App SID format' 
       });
     }
-
-    console.log('[Twilio Token] ✅ Credentials validated, generating token...');
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;
@@ -1143,13 +1060,6 @@ app.post('/api/twilio/token', async (req, res) => {
     // Serialize the token to a JWT string
     const jwt = token.toJwt();
 
-    console.log('[Twilio Token] ✅ Token generated successfully:', {
-      identity: validatedUserId,
-      tokenLength: jwt.length,
-      accountSid: TWILIO_ACCOUNT_SID.substring(0, 8) + '...',
-      appSid: TWILIO_APP_SID.substring(0, 8) + '...'
-    });
-
     res.json({
       success: true,
       token: jwt,
@@ -1158,12 +1068,7 @@ app.post('/api/twilio/token', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[Twilio Token] ❌ Error generating token:', error);
-    console.error('[Twilio Token] Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error('[Twilio Token] Error generating token:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate access token'
@@ -1662,8 +1567,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
 
           if (error) {
             console.error('Error updating user plan:', error);
-          } else {
-            console.log(`✅ Updated user ${validatedUserId} to ${validatedPlan} plan`);
           }
 
           // Send invoice to customer email
@@ -1684,10 +1587,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
                 // Send the invoice via email
                 // Stripe will automatically send it to the customer's email
                 await stripe.invoices.sendInvoice(invoice.id);
-                
-                console.log(`✅ Invoice ${invoice.id} sent to customer email for subscription ${subscription.id}`);
-              } else {
-                console.warn(`⚠️ No invoice found for subscription ${subscription.id}`);
               }
             } catch (invoiceError) {
               // Log error but don't fail the webhook - plan update is more important
@@ -1708,7 +1607,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
             // Stripe automatically sends some invoices, but we ensure it's sent here
             if (invoice.status === 'paid') {
               await stripe.invoices.sendInvoice(invoice.id);
-              console.log(`✅ Invoice ${invoice.id} sent to customer email after successful payment (amount: ${invoice.amount_paid / 100} ${invoice.currency})`);
             }
           } catch (invoiceError) {
             // Invoice might already be sent - that's okay
@@ -1747,8 +1645,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
 
             if (error) {
               console.error('Error downgrading user plan:', error);
-            } else {
-              console.log(`✅ Downgraded user ${validatedUserId} to free plan`);
             }
           }
         } else if (userId && plan) {
@@ -1787,8 +1683,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
 
           if (error) {
             console.error('Error updating user plan:', error);
-          } else {
-            console.log(`✅ Updated user ${validatedUserId} ${validatedPlan} plan expiration`);
           }
 
           // Send invoice for subscription renewal (if payment was successful)
@@ -1807,7 +1701,6 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
                 if (invoice.status === 'paid' && invoice.amount_paid > 0) {
                   try {
                     await stripe.invoices.sendInvoice(invoice.id);
-                    console.log(`✅ Renewal invoice ${invoice.id} sent to customer email`);
                   } catch (sendError) {
                     // Invoice might already be sent - that's okay
                     if (sendError.code !== 'invoice_already_sent') {
@@ -1825,7 +1718,10 @@ app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyn
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        // Unhandled event type - log only in development
+        if (!isProduction) {
+          console.log(`Unhandled event type: ${event.type}`);
+        }
     }
 
     res.json({ received: true });

@@ -1025,7 +1025,6 @@ const DocumentEditor: React.FC = () => {
       // If no activity for 2 minutes (120000ms), pause timer
       if (timeSinceActivity >= 120000 && isTimerActive) {
         setIsTimerActive(false);
-        console.log('Timer paused due to inactivity');
       }
     }, 5000); // Check every 5 seconds
 
@@ -1074,7 +1073,6 @@ const DocumentEditor: React.FC = () => {
     if (!isTimerActive) {
       setIsTimerActive(true);
       setSessionStartTime(now);
-      console.log('Timer resumed due to activity');
     }
   };
 
@@ -1438,11 +1436,8 @@ const DocumentEditor: React.FC = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          console.log('🔍 No session found');
           return;
         }
-
-        console.log('🔍 Loading friends for user:', session.user.id);
 
         // Fetch friends from friends table (matching Friends.tsx pattern)
         const { data: friendsData, error: friendsError } = await supabase
@@ -1452,24 +1447,17 @@ const DocumentEditor: React.FC = () => {
           .eq('status', 'accepted')
           .limit(5);
 
-        console.log('🔍 Friends query result:', { friendsData, friendsError });
-
         if (friendsError) {
           console.error('❌ Error fetching friends:', friendsError);
           return;
         }
 
         if (!friendsData || friendsData.length === 0) {
-          console.log('⚠️ No friends found');
           return;
         }
 
-        console.log('✅ Found friends:', friendsData.length);
-
         // Get friend IDs
         const friendIds = friendsData.map((friend) => friend.friend_id);
-
-        console.log('🔍 Friend IDs to fetch:', friendIds);
 
         // Fetch friend profiles including plan information
         const { data: profilesData, error: profilesError } = await supabase
@@ -1477,14 +1465,11 @@ const DocumentEditor: React.FC = () => {
           .select('id, first_name, last_name, image_url, email, role, plan, plan_expires_at')
           .in('id', friendIds);
 
-        console.log('🔍 Profiles query result:', { profilesData, profilesError });
-
         if (profilesError) {
           console.error('❌ Error fetching profiles:', profilesError);
           return;
         }
 
-        console.log('✅ Setting friends:', profilesData?.length || 0);
         setFriends(profilesData || []);
       } catch (error) {
         console.error('❌ Error loading friends:', error);
@@ -1709,10 +1694,6 @@ const DocumentEditor: React.FC = () => {
     excalidrawAPI.updateScene({
       elements: [...currentElements, newElement],
     });
-
-    console.log(`📄 Added page ${pageIndex + 1} to canvas at position:`, {
-      x: newElement.x,
-      y: newElement.y,
       viewportCenter: { x: viewportCenterX, y: viewportCenterY }
     });
 
@@ -2091,7 +2072,6 @@ const DocumentEditor: React.FC = () => {
     } catch (error) {
       // Don't show error if request was aborted
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log('[DocumentEditor] Request was cancelled');
         // Remove the user message that was added if request was cancelled
         setChatMessages(prev => {
           const updated = prev.slice(0, -1); // Remove last message (the user message)

@@ -97,17 +97,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     let isMounted = true;
 
-    console.log('[AuthContext] Initializing auth...');
-
     // Get initial session
     supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
-      console.log('[AuthContext] getSession result:', { 
-        hasSession: !!session, 
-        hasUser: !!session?.user, 
-        userId: session?.user?.id,
-        error: sessionError?.message 
-      });
-      
       if (!isMounted) return;
 
       if (sessionError) {
@@ -122,10 +113,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        console.log('[AuthContext] Loading profile for user:', session.user.id);
         loadProfile(session.user.id)
           .then((prof) => {
-            console.log('[AuthContext] Profile loaded:', { hasProfile: !!prof, username: prof?.username });
             if (!isMounted) return;
             setProfile(prof);
             setLoading(false);
@@ -137,7 +126,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             setLoading(false);
           });
       } else {
-        console.log('[AuthContext] No session, setting loading to false');
         setProfile(null);
         setLoading(false);
       }
@@ -147,22 +135,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[AuthContext] Auth state changed:', { 
-        event, 
-        hasSession: !!session, 
-        hasUser: !!session?.user,
-        userId: session?.user?.id 
-      });
-      
       if (!isMounted) return;
 
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        console.log('[AuthContext] Loading profile in auth state change for user:', session.user.id);
         try {
           const prof = await loadProfile(session.user.id);
-          console.log('[AuthContext] Profile loaded in auth state change:', { hasProfile: !!prof, username: prof?.username });
           if (!isMounted) return;
           setProfile(prof);
         } catch (err) {
@@ -171,15 +150,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           setError(err as Error);
         }
       } else {
-        console.log('[AuthContext] No user in session, clearing profile');
         setProfile(null);
       }
-      console.log('[AuthContext] Setting loading to false after auth state change');
       setLoading(false);
     });
 
     return () => {
-      console.log('[AuthContext] Cleaning up auth listener');
       isMounted = false;
       subscription.unsubscribe();
     };

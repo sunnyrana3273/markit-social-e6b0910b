@@ -445,17 +445,6 @@ const CourseCommunity = () => {
   };
 
   const handleCreateDiscussion = async () => {
-    console.log('[handleCreateDiscussion] Starting discussion creation...');
-    console.log('[handleCreateDiscussion] Inputs:', {
-      user: user?.id,
-      communityId,
-      title: newDiscussionTitle,
-      content: newDiscussionContent?.substring(0, 50) + '...',
-      isAnonymous: newDiscussionAnonymous,
-      hasFile: !!newDiscussionFile,
-      fileName: newDiscussionFile?.name
-    });
-
     // Validate required fields and show user-friendly error messages
     if (!user || !communityId) {
       // System-level validation - shouldn't happen in normal flow
@@ -481,7 +470,6 @@ const CourseCommunity = () => {
 
     // Moderate content before submission (including images)
     const combinedText = `${trimmedTitle} ${trimmedContent}`;
-    console.log('[handleCreateDiscussion] Running content moderation...');
     setIsModeratingDiscussion(true);
     try {
       // Only moderate image if it's an image file
@@ -492,7 +480,6 @@ const CourseCommunity = () => {
       const moderationResult = await moderateContent(combinedText, 'post', imageFile);
       
       if (moderationResult.blocked) {
-        console.log('[handleCreateDiscussion] Content blocked by moderation:', moderationResult.reason);
         setIsModeratingDiscussion(false);
         toast({
           title: "Content Not Allowed",
@@ -501,8 +488,6 @@ const CourseCommunity = () => {
         });
         return;
       }
-
-      console.log('[handleCreateDiscussion] Content moderation passed');
     } finally {
       setIsModeratingDiscussion(false);
     }
@@ -513,11 +498,6 @@ const CourseCommunity = () => {
 
     // Upload file if present (only after moderation passes)
     if (newDiscussionFile) {
-      console.log('[handleCreateDiscussion] Uploading file:', {
-        name: newDiscussionFile.name,
-        type: newDiscussionFile.type,
-        size: newDiscussionFile.size
-      });
       setIsUploadingDiscussionFile(true);
       try {
         const { url, error } = await uploadFile(newDiscussionFile);
@@ -531,7 +511,6 @@ const CourseCommunity = () => {
           });
           return;
         }
-        console.log('[handleCreateDiscussion] File uploaded successfully:', url);
         attachmentUrl = url;
         attachmentType = newDiscussionFile.type;
         attachmentName = newDiscussionFile.name;
@@ -563,13 +542,7 @@ const CourseCommunity = () => {
       discussionData.attachment_name = attachmentName;
     }
 
-    console.log('[handleCreateDiscussion] Inserting discussion to database:', {
-      ...discussionData,
-      content: discussionData.content.substring(0, 50) + '...'
-    });
-
     try {
-      console.log('[handleCreateDiscussion] Making Supabase insert call...');
       const insertResult = await supabase
         .from('community_discussions')
         .insert(discussionData)
@@ -578,13 +551,6 @@ const CourseCommunity = () => {
           profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
         `)
         .single();
-      
-      console.log('[handleCreateDiscussion] Insert result received:', {
-        hasData: !!insertResult.data,
-        hasError: !!insertResult.error,
-        error: insertResult.error,
-        data: insertResult.data ? { id: insertResult.data.id, title: insertResult.data.title } : null
-      });
 
       const { data: newDiscussion, error } = insertResult;
 
@@ -614,24 +580,16 @@ const CourseCommunity = () => {
         });
         return;
       }
-
-      console.log('[handleCreateDiscussion] Discussion created successfully:', {
-        id: newDiscussion.id,
-        title: newDiscussion.title
-      });
       
       // Add the new discussion to the top of the list
-      console.log('[handleCreateDiscussion] Updating discussions state...');
       setDiscussions(prev => {
         const updated = [newDiscussion as any, ...prev];
-        console.log('[handleCreateDiscussion] Updated discussions list, new count:', updated.length);
         return updated;
       });
       
       // Initialize reply count for the new discussion
       setReplyCounts(prev => ({ ...prev, [newDiscussion.id]: 0 }));
       
-      console.log('[handleCreateDiscussion] Clearing form fields...');
       setNewDiscussionTitle("");
       setNewDiscussionContent("");
       setNewDiscussionAnonymous(false);
@@ -642,12 +600,10 @@ const CourseCommunity = () => {
       }
       setNewDiscussionFile(null);
       setShowNewDiscussion(false);
-      console.log('[handleCreateDiscussion] Form cleared and UI updated');
       toast({
         title: "Success",
         description: "Post created!"
       });
-      console.log('[handleCreateDiscussion] Function completed successfully');
     } catch (dbError) {
       console.error('[handleCreateDiscussion] Database insert exception:', dbError);
       console.error('[handleCreateDiscussion] Exception details:', {
@@ -873,7 +829,6 @@ const CourseCommunity = () => {
     // Moderate content before submission (including images)
     const contentToModerate = replyContent || '';
     if (contentToModerate || replyFile) {
-      console.log('[handleReplySubmit] Running content moderation...');
       setIsModeratingReply(prev => ({ ...prev, [discussionId]: true }));
       try {
         // Only moderate image if it's an image file
@@ -884,7 +839,6 @@ const CourseCommunity = () => {
         const moderationResult = await moderateContent(contentToModerate, 'reply', imageFile);
         
         if (moderationResult.blocked) {
-          console.log('[handleReplySubmit] Content blocked by moderation:', moderationResult.reason);
           setIsModeratingReply(prev => ({ ...prev, [discussionId]: false }));
           toast({
             title: "Content Not Allowed",
@@ -893,8 +847,6 @@ const CourseCommunity = () => {
           });
           return;
         }
-
-        console.log('[handleReplySubmit] Content moderation passed');
       } finally {
         setIsModeratingReply(prev => ({ ...prev, [discussionId]: false }));
       }

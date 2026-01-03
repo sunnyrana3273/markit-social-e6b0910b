@@ -234,7 +234,7 @@ const Index = () => {
                     <div className="w-8 h-8 rounded-full bg-home-secondary border-2 border-home-background" />
                     <div className="w-8 h-8 rounded-full bg-green-500 border-2 border-home-background" />
                   </div>
-                  <span>1000+ active learners</span>
+                  <span>300+ active learners</span>
                 </div>
                 <div className="flex items-center gap-1">
                   {[...Array(5)].map((_, i) => (

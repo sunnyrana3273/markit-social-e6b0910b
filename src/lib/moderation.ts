@@ -3,7 +3,7 @@
  * Uses OpenAI moderation API via backend endpoint to check content for inappropriate material
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+import { BACKEND_URL } from './api';
 
 export interface ModerationResult {
   blocked: boolean;

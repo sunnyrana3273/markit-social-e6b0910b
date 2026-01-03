@@ -16,7 +16,7 @@ import { useForceLightMode } from "@/hooks/useForceLightMode";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+import { BACKEND_URL } from '@/lib/api';
 
 const Pricing = () => {
   useForceLightMode();

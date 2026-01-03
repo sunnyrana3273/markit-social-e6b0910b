@@ -2,9 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Device, Call } from '@twilio/voice-sdk';
 import { supabase } from '@/integrations/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
-
-// Backend API URL - uses environment variable in production
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+import { BACKEND_URL } from '@/lib/api';
 
 export type CallState = 'idle' | 'connecting' | 'ringing' | 'connected' | 'disconnected' | 'error';
 

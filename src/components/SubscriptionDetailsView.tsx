@@ -21,6 +21,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "react-router-dom";
+import { BACKEND_URL } from "@/lib/api";
 
 interface SubscriptionDetailsViewProps {
   userId?: string;
@@ -108,8 +109,6 @@ const SubscriptionDetailsView = ({ userId }: SubscriptionDetailsViewProps) => {
         return;
       }
 
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-      
       // Fetch from backend API
       const response = await fetch(`${BACKEND_URL}/api/user/subscription-details`, {
         headers: {
@@ -176,8 +175,6 @@ const SubscriptionDetailsView = ({ userId }: SubscriptionDetailsViewProps) => {
         return;
       }
 
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-      
       const response = await fetch(`${BACKEND_URL}/api/cancel-subscription`, {
         method: 'POST',
         headers: {
@@ -226,8 +223,6 @@ const SubscriptionDetailsView = ({ userId }: SubscriptionDetailsViewProps) => {
         return;
       }
 
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
-      
       const response = await fetch(`${BACKEND_URL}/api/reactivate-subscription`, {
         method: 'POST',
         headers: {

@@ -28,8 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// Backend API URL - uses environment variable in production
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+import { BACKEND_URL } from '@/lib/api';
 
 // Component to render text with LaTeX math support
 interface MathTextProps {

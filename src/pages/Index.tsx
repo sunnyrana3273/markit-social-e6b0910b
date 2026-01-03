@@ -27,6 +27,7 @@ import hisdLogo from "@/assets/hisdlogo.png";
 import utLogo from "@/assets/utlogo.png";
 import congressionalLogo from "@/assets/congressionalappchallengetranspo.png";
 import amLogo from "@/assets/a&mlogo.png";
+import markitDemoVideo from "@/assets/markitdemo.mp4";
 
 const Index = () => {
   useForceLightMode();
@@ -165,7 +166,7 @@ const Index = () => {
       </header>
 
       {/* Hero Section */}
-      <section className="relative py-20 lg:py-32 overflow-hidden">
+      <section className="relative pt-12 pb-8 lg:pt-16 lg:pb-12 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-home-primary/10 via-home-secondary/10 to-green-100/20" />
         
         <div className="container mx-auto px-4 relative">
@@ -211,19 +212,18 @@ const Index = () => {
                   </Link>
                 )}
                 <Button
-                  asChild
                   variant="outline"
                   size="lg"
                   className="border-home-primary text-home-primary hover:bg-home-primary hover:text-white"
+                  onClick={() => {
+                    const videoSection = document.getElementById('video-demo');
+                    if (videoSection) {
+                      videoSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
                 >
-                  <a
-                    href="https://youtu.be/lRPaDEsEVoA?si=DDQ6Na7pLqLqF_gQ"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Video className="w-4 h-4 mr-2" />
-                    Watch Demo
-                  </a>
+                  <Video className="w-4 h-4 mr-2" />
+                  Watch Demo
                 </Button>
               </div>
               
@@ -249,9 +249,9 @@ const Index = () => {
       </section>
 
       {/* Endorsements Carousel */}
-      <section className="py-12 bg-white border-y border-gray-200">
+      <section className="py-4 bg-white border-y border-gray-200">
         <div className="container mx-auto px-4">
-          <h2 className="text-center text-3xl font-bold text-home-foreground mb-8">
+          <h2 className="text-center text-2xl font-bold text-home-foreground mb-3">
             Endorsed by students/organizations at leading institutions
           </h2>
           <div className="relative overflow-hidden">
@@ -276,7 +276,7 @@ const Index = () => {
                   className="flex-shrink-0 flex items-center justify-center"
                   style={{ 
                     width: '200px', 
-                    height: '80px',
+                    height: '50px',
                     marginRight: index % 4 === 3 ? '0' : '4rem'
                   }}
                 >
@@ -288,6 +288,22 @@ const Index = () => {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Video Demo Section */}
+      <section id="video-demo" className="py-12 bg-home-background scroll-mt-16">
+        <div className="container mx-auto px-4">
+          <div className="max-w-4xl mx-auto">
+            <video
+              src={markitDemoVideo}
+              controls
+              className="w-full rounded-lg shadow-lg"
+              style={{ maxHeight: '600px' }}
+            >
+              Your browser does not support the video tag.
+            </video>
           </div>
         </div>
       </section>

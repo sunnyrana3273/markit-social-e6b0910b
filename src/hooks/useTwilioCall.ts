@@ -116,7 +116,7 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
         // Initialize Twilio Device
         const newDevice = new Device(data.token, {
-          logLevel: 1, // 1 = error only
+          logLevel: 0, // 0 = silent (no logs)
         });
 
         // Set up device event listeners

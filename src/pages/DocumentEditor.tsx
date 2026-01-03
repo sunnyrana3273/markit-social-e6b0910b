@@ -1694,8 +1694,6 @@ const DocumentEditor: React.FC = () => {
     excalidrawAPI.updateScene({
       elements: [...currentElements, newElement],
     });
-      viewportCenter: { x: viewportCenterX, y: viewportCenterY }
-    });
 
     // Mark this page as imported
     setImportedPages(prev => new Set(prev).add(pageIndex));

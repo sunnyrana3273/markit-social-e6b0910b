@@ -94,6 +94,9 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
         // Get Twilio access token
         console.log('[useTwilioCall] 🔑 Fetching Twilio access token from backend...');
+        console.log('[useTwilioCall] Backend URL:', BACKEND_URL);
+        console.log('[useTwilioCall] User ID:', user.id);
+        
         const response = await fetch(`${BACKEND_URL}/api/twilio/token`, {
           method: 'POST',
           headers: {
@@ -102,16 +105,38 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
           body: JSON.stringify({ userId: user.id }),
         });
 
+        console.log('[useTwilioCall] Response status:', response.status, response.statusText);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[useTwilioCall] ❌ HTTP error response:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          });
+          setError(`Failed to get token: ${response.status} ${response.statusText}`);
+          return;
+        }
+
         const data = await response.json();
         console.log('[useTwilioCall] 📦 Token response received:', { 
           success: data.success, 
           hasToken: !!data.token,
-          identity: data.identity 
+          tokenLength: data.token ? data.token.length : 0,
+          identity: data.identity,
+          error: data.error
         });
 
         if (!data.success || !data.token) {
           console.error('[useTwilioCall] ❌ Failed to get token:', data.error);
           setError(data.error || 'Failed to get access token');
+          return;
+        }
+
+        // Validate token format (should be a JWT)
+        if (!data.token.includes('.')) {
+          console.error('[useTwilioCall] ❌ Invalid token format (not a JWT)');
+          setError('Invalid token format received from server');
           return;
         }
 

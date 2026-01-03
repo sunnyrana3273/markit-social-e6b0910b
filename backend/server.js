@@ -1059,9 +1059,18 @@ app.post('/api/twilio/token', async (req, res) => {
   try {
     const { userId } = req.body;
 
+    console.log('[Twilio Token] Request received:', { 
+      userId: userId ? `${userId.substring(0, 8)}...` : 'missing',
+      hasAccountSid: !!TWILIO_ACCOUNT_SID,
+      hasApiKey: !!TWILIO_API_KEY,
+      hasApiSecret: !!TWILIO_API_SECRET,
+      hasAppSid: !!TWILIO_APP_SID
+    });
+
     // Validate UUID format
     const validation = validateInput(uuidSchema, userId);
     if (!validation.success) {
+      console.error('[Twilio Token] Invalid user ID format:', validation.error);
       return res.status(400).json({ 
         success: false, 
         error: validation.error || 'Invalid user ID format' 
@@ -1070,12 +1079,46 @@ app.post('/api/twilio/token', async (req, res) => {
 
     const validatedUserId = validation.data;
 
+    // Check if Twilio credentials are configured
     if (!TWILIO_ACCOUNT_SID || !TWILIO_API_KEY || !TWILIO_API_SECRET || !TWILIO_APP_SID) {
+      console.error('[Twilio Token] ❌ Missing Twilio credentials:', {
+        hasAccountSid: !!TWILIO_ACCOUNT_SID,
+        hasApiKey: !!TWILIO_API_KEY,
+        hasApiSecret: !!TWILIO_API_SECRET,
+        hasAppSid: !!TWILIO_APP_SID
+      });
       return res.status(500).json({ 
         success: false, 
-        error: 'Twilio is not configured. Please set up Twilio credentials.' 
+        error: 'Twilio is not configured. Please set up Twilio credentials in environment variables.' 
       });
     }
+
+    // Validate credential formats
+    if (!TWILIO_ACCOUNT_SID.startsWith('AC') || TWILIO_ACCOUNT_SID.length !== 34) {
+      console.error('[Twilio Token] ❌ Invalid Account SID format');
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Invalid Twilio Account SID format' 
+      });
+    }
+
+    if (!TWILIO_API_KEY.startsWith('SK') || TWILIO_API_KEY.length < 30) {
+      console.error('[Twilio Token] ❌ Invalid API Key format');
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Invalid Twilio API Key format' 
+      });
+    }
+
+    if (!TWILIO_APP_SID.startsWith('AP') || TWILIO_APP_SID.length !== 34) {
+      console.error('[Twilio Token] ❌ Invalid App SID format');
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Invalid Twilio App SID format' 
+      });
+    }
+
+    console.log('[Twilio Token] ✅ Credentials validated, generating token...');
 
     // Create access token
     const AccessToken = twilio.jwt.AccessToken;
@@ -1100,6 +1143,13 @@ app.post('/api/twilio/token', async (req, res) => {
     // Serialize the token to a JWT string
     const jwt = token.toJwt();
 
+    console.log('[Twilio Token] ✅ Token generated successfully:', {
+      identity: validatedUserId,
+      tokenLength: jwt.length,
+      accountSid: TWILIO_ACCOUNT_SID.substring(0, 8) + '...',
+      appSid: TWILIO_APP_SID.substring(0, 8) + '...'
+    });
+
     res.json({
       success: true,
       token: jwt,
@@ -1108,7 +1158,12 @@ app.post('/api/twilio/token', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error generating Twilio token:', error);
+    console.error('[Twilio Token] ❌ Error generating token:', error);
+    console.error('[Twilio Token] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to generate access token'

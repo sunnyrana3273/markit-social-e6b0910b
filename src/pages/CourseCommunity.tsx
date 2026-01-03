@@ -48,7 +48,8 @@ import {
   MousePointerClick,
   Upload,
   X as XIcon,
-  Download
+  Download,
+  Flag
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
@@ -63,6 +64,7 @@ import { moderateContent } from "@/lib/moderation";
 import { useQueryClient } from "@tanstack/react-query";
 import ReportIssueFooter from "@/components/ReportIssueFooter";
 import { UserProfileModal } from "@/components/UserProfileModal";
+import { ReportContentDialog } from "@/components/ReportContentDialog";
 
 interface Profile {
   first_name: string | null;
@@ -73,6 +75,7 @@ interface Profile {
   plan?: 'free' | 'plus' | 'pro';
   plan_expires_at?: string | null;
   profile_visible_in_communities?: boolean;
+  is_under_review?: boolean;
 }
 
 interface Community {
@@ -92,6 +95,7 @@ interface Discussion {
   attachment_url?: string | null;
   attachment_type?: string | null;
   attachment_name?: string | null;
+  is_removed?: boolean;
   profiles: Profile;
 }
 
@@ -105,6 +109,7 @@ interface Reply {
   attachment_url?: string | null;
   attachment_type?: string | null;
   attachment_name?: string | null;
+  is_removed?: boolean;
   profiles: Profile;
 }
 
@@ -155,6 +160,10 @@ const CourseCommunity = () => {
   const [replyVotes, setReplyVotes] = useState<Record<string, { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null }>>({});
   const [interactionCounts, setInteractionCounts] = useState<Record<string, number>>({});
   const [selectedProfileUserId, setSelectedProfileUserId] = useState<string | null>(null);
+  const [reportDialogOpen, setReportDialogOpen] = useState<{ 
+    contentType: 'post' | 'reply' | null;
+    contentId: string | null;
+  }>({ contentType: null, contentId: null });
 
   useEffect(() => {
     document.title = "MarkIt | Community";
@@ -252,7 +261,7 @@ const CourseCommunity = () => {
             last_seen: new Date().toISOString()
           });
 
-        // Fetch discussions
+        // Fetch discussions (exclude removed ones)
         const { data: discussionsData } = await supabase
           .from('community_discussions')
           .select(`
@@ -260,6 +269,7 @@ const CourseCommunity = () => {
             profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
           `)
           .eq('community_id', communityId)
+          .eq('is_removed', false)
           .order('created_at', { ascending: false });
 
         if (discussionsData) {
@@ -269,11 +279,12 @@ const CourseCommunity = () => {
           if (discussionsData.length > 0) {
             const discussionIds = discussionsData.map(d => d.id);
             
-            // Fetch all replies and count them by discussion_id
+            // Fetch all replies and count them by discussion_id (exclude removed)
             const { data: repliesData } = await supabase
               .from('community_discussion_replies')
               .select('discussion_id')
-              .in('discussion_id', discussionIds);
+              .in('discussion_id', discussionIds)
+              .eq('is_removed', false);
             
             // Count replies per discussion
             const counts: Record<string, number> = {};
@@ -445,6 +456,16 @@ const CourseCommunity = () => {
   };
 
   const handleCreateDiscussion = async () => {
+    // Check if user is under review
+    if (profile?.is_under_review) {
+      toast({
+        title: "Posting Blocked",
+        description: "You are currently under review for a post you made. Please wait for the review to complete before posting again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Validate required fields and show user-friendly error messages
     if (!user || !communityId) {
       // System-level validation - shouldn't happen in normal flow
@@ -812,6 +833,7 @@ const CourseCommunity = () => {
           profiles:user_id (first_name, last_name, image_url, email, profile_visible_in_communities)
         `)
         .eq('discussion_id', discussionId)
+        .eq('is_removed', false)
         .order('created_at', { ascending: true });
 
       if (repliesData) {
@@ -821,6 +843,16 @@ const CourseCommunity = () => {
   };
 
   const handleReplySubmit = async (discussionId: string) => {
+    // Check if user is under review
+    if (profile?.is_under_review) {
+      toast({
+        title: "Posting Blocked",
+        description: "You are currently under review for a post you made. Please wait for the review to complete before posting again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const replyContent = replyContents[discussionId]?.trim();
     const isAnonymous = replyAnonymous[discussionId] || false;
     const replyFile = replyFiles[discussionId];
@@ -1614,6 +1646,28 @@ const CourseCommunity = () => {
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
                                   )}
+                                  {user && discussion.user_id !== user.id && (
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setReportDialogOpen({ contentType: 'post', contentId: discussion.id });
+                                            }}
+                                            className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400"
+                                          >
+                                            <Flag className="w-4 h-4" />
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>Report this post</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )}
                                 </div>
                                 <h3 className="font-semibold text-home-foreground mb-1">{discussion.title}</h3>
                                 <p className="text-gray-600 dark:text-gray-400 mb-3">{discussion.content}</p>
@@ -1873,19 +1927,43 @@ const CourseCommunity = () => {
                                                 {formatDistanceToNow(new Date(reply.created_at), { addSuffix: true })}
                                               </span>
                                             </div>
-                                            {user && reply.user_id === user.id && (
-                                              <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setDeleteDialogOpen({ type: 'reply', id: reply.id, discussionId: discussion.id });
-                                                }}
-                                                className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 h-6 px-2"
-                                              >
-                                                <Trash2 className="w-3 h-3" />
-                                              </Button>
-                                            )}
+                                            <div className="flex items-center gap-1">
+                                              {user && reply.user_id === user.id && (
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setDeleteDialogOpen({ type: 'reply', id: reply.id, discussionId: discussion.id });
+                                                  }}
+                                                  className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 h-6 px-2"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </Button>
+                                              )}
+                                              {user && reply.user_id !== user.id && (
+                                                <TooltipProvider>
+                                                  <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                      <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          setReportDialogOpen({ contentType: 'reply', contentId: reply.id });
+                                                        }}
+                                                        className="text-gray-600 dark:text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 h-6 px-2"
+                                                      >
+                                                        <Flag className="w-3 h-3" />
+                                                      </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                      <p>Report this reply</p>
+                                                    </TooltipContent>
+                                                  </Tooltip>
+                                                </TooltipProvider>
+                                              )}
+                                            </div>
                                           </div>
                                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{reply.content}</p>
                                           {reply.attachment_url && reply.attachment_type && reply.attachment_name && (
@@ -2534,6 +2612,25 @@ const CourseCommunity = () => {
         </Dialog>
       )}
       <ReportIssueFooter />
+      
+      {/* Report Content Dialog */}
+      <ReportContentDialog
+        open={reportDialogOpen.contentType !== null && reportDialogOpen.contentId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReportDialogOpen({ contentType: null, contentId: null });
+          }
+        }}
+        contentType={reportDialogOpen.contentType || 'post'}
+        contentId={reportDialogOpen.contentId || ''}
+        onReportSubmitted={() => {
+          // Refresh discussions/replies if needed
+          if (communityId && user) {
+            // Trigger a refresh of the data
+            window.location.reload(); // Simple approach - could be optimized with state updates
+          }
+        }}
+      />
     </div>
   );
 };

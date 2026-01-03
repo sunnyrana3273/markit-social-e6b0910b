@@ -13,13 +13,13 @@ export interface ModerationResult {
 /**
  * Moderate content using the backend moderation API
  * @param text - The text content to moderate
- * @param contentType - Type of content: 'post' (includes title + content) or 'reply' (just content)
+ * @param contentType - Type of content: 'post' (includes title + content), 'reply' (just content), or 'username'
  * @param image - Optional base64 image string or File object to moderate
  * @returns Promise resolving to moderation result
  */
 export async function moderateContent(
   text: string,
-  contentType: 'post' | 'reply',
+  contentType: 'post' | 'reply' | 'username',
   image?: string | File | null
 ): Promise<ModerationResult> {
   try {

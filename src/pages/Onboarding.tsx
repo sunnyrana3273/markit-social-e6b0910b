@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useForceLightMode } from "@/hooks/useForceLightMode";
+import { moderateContent } from "@/lib/moderation";
 
 interface Community {
   id: string;
@@ -171,6 +172,15 @@ const Onboarding = () => {
     try {
       if (!userId) {
         throw new Error("User not authenticated");
+      }
+
+      // Check username for inappropriate content
+      const moderationResult = await moderateContent(username, 'username');
+      
+      if (moderationResult.blocked) {
+        setUsernameError(`Username contains inappropriate content. ${moderationResult.reason ? `Reason: ${moderationResult.reason}. ` : ''}Please choose a different username.`);
+        setIsSubmitting(false);
+        return;
       }
 
       const { error } = await supabase

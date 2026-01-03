@@ -17,9 +17,12 @@ import { getPlanConfig } from './lib/subscription.js';
 import { 
   validateInput, 
   uuidSchema, 
-  planTypeSchema, 
-  contentSchema, 
-  titleSchema 
+  planTypeSchema,
+  contentSchema,
+  titleSchema,
+  contentTypeSchema,
+  reportReasonSchema,
+  reportDetailsSchema
 } from './lib/validation.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -839,10 +842,10 @@ app.post('/api/moderate-content', async (req, res) => {
     const validatedText = textValidation.data;
 
     // Validate contentType using enum
-    if (!contentType || !['post', 'reply'].includes(contentType)) {
+    if (!contentType || !['post', 'reply', 'username'].includes(contentType)) {
       return res.status(400).json({
         success: false,
-        error: 'Content type must be "post" or "reply"'
+        error: 'Content type must be "post", "reply", or "username"'
       });
     }
 
@@ -1423,6 +1426,174 @@ app.post('/api/cancel-subscription', requireUser(), async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: error.message || 'Failed to cancel subscription' 
+    });
+  }
+});
+
+/**
+ * Report content (post or reply)
+ * POST /api/report-content
+ * Headers: Authorization: Bearer <token>
+ * Body: { contentType: 'post' | 'reply', contentId: string, reason: string, details?: string }
+ */
+app.post('/api/report-content', requireUser(), async (req, res) => {
+  try {
+    const user = req.user;
+    const { contentType, contentId, reason, details } = req.body;
+
+    // Validate contentType
+    const contentTypeValidation = validateInput(contentTypeSchema, contentType);
+    if (!contentTypeValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: contentTypeValidation.error || 'Invalid content type'
+      });
+    }
+    const validatedContentType = contentTypeValidation.data;
+
+    // Validate contentId (UUID)
+    const contentIdValidation = validateInput(uuidSchema, contentId);
+    if (!contentIdValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: contentIdValidation.error || 'Invalid content ID'
+      });
+    }
+    const validatedContentId = contentIdValidation.data;
+
+    // Validate reason
+    const reasonValidation = validateInput(reportReasonSchema, reason);
+    if (!reasonValidation.success) {
+      return res.status(400).json({
+        success: false,
+        error: reasonValidation.error || 'Invalid reason'
+      });
+    }
+    const validatedReason = reasonValidation.data;
+
+    // Validate details (optional)
+    let validatedDetails = null;
+    if (details !== undefined && details !== null) {
+      const detailsValidation = validateInput(reportDetailsSchema, details);
+      if (!detailsValidation.success) {
+        return res.status(400).json({
+          success: false,
+          error: detailsValidation.error || 'Invalid details'
+        });
+      }
+      validatedDetails = detailsValidation.data || null;
+    }
+
+    // Verify content exists and user is not reporting their own content
+    if (validatedContentType === 'post') {
+      const { data: discussion, error: discussionError } = await supabase
+        .from('community_discussions')
+        .select('id, user_id, is_removed')
+        .eq('id', validatedContentId)
+        .single();
+
+      if (discussionError || !discussion) {
+        return res.status(404).json({
+          success: false,
+          error: 'Post not found'
+        });
+      }
+
+      if (discussion.user_id === user.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'You cannot report your own content'
+        });
+      }
+
+      if (discussion.is_removed) {
+        return res.status(400).json({
+          success: false,
+          error: 'This post has already been removed'
+        });
+      }
+    } else if (validatedContentType === 'reply') {
+      const { data: reply, error: replyError } = await supabase
+        .from('community_discussion_replies')
+        .select('id, user_id, is_removed')
+        .eq('id', validatedContentId)
+        .single();
+
+      if (replyError || !reply) {
+        return res.status(404).json({
+          success: false,
+          error: 'Reply not found'
+        });
+      }
+
+      if (reply.user_id === user.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'You cannot report your own content'
+        });
+      }
+
+      if (reply.is_removed) {
+        return res.status(400).json({
+          success: false,
+          error: 'This reply has already been removed'
+        });
+      }
+    }
+
+    // Check if user has already reported this content
+    const { data: existingReport } = await supabase
+      .from('content_reports')
+      .select('id')
+      .eq('content_type', validatedContentType)
+      .eq('content_id', validatedContentId)
+      .eq('reporter_id', user.id)
+      .maybeSingle();
+
+    if (existingReport) {
+      return res.status(400).json({
+        success: false,
+        error: 'You have already reported this content'
+      });
+    }
+
+    // Create the report (trigger will handle count and removal logic)
+    const { data: report, error: reportError } = await supabase
+      .from('content_reports')
+      .insert({
+        content_type: validatedContentType,
+        content_id: validatedContentId,
+        reporter_id: user.id,
+        reason: validatedReason,
+        details: validatedDetails
+      })
+      .select()
+      .single();
+
+    if (reportError) {
+      console.error('[Report] Error creating report:', reportError);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to submit report'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Report submitted successfully',
+      report: {
+        id: report.id,
+        contentType: report.content_type,
+        contentId: report.content_id,
+        reason: report.reason
+      }
+    });
+
+  } catch (error) {
+    console.error('[Report] Error processing report:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process report'
     });
   }
 });

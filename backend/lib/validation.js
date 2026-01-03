@@ -184,6 +184,27 @@ export const discussionIdSchema = uuidSchema;
 export const friendIdSchema = uuidSchema;
 
 /**
+ * Content Type Validation Schema (for reports)
+ */
+export const contentTypeSchema = z.enum(['post', 'reply'], {
+  errorMap: () => ({ message: 'Content type must be "post" or "reply"' })
+});
+
+/**
+ * Report Reason Validation Schema
+ */
+export const reportReasonSchema = z.string()
+  .min(1, { message: 'Reason cannot be empty' })
+  .max(200, { message: 'Reason too long' });
+
+/**
+ * Report Details Validation Schema (optional)
+ */
+export const reportDetailsSchema = z.string()
+  .max(1000, { message: 'Details too long' })
+  .optional();
+
+/**
  * Validation helper function
  * Wraps Zod validation with error handling
  * @param {z.ZodSchema} schema - Zod schema to validate against

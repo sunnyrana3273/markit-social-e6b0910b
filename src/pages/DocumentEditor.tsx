@@ -2237,9 +2237,18 @@ const DocumentEditor: React.FC = () => {
       'Keep explanatory text concise but complete.'
     ].join(' ');
     try {
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
       const resp = await fetch(`${BACKEND_URL}/api/rewrite-steps`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ content: messageContent, instructions: baseInstructions })
       });
       const data = await resp.json();
@@ -2375,9 +2384,18 @@ const DocumentEditor: React.FC = () => {
       let dataURL = makeDataUrl(1400, 0.8);
       const lastAssistant = [...chatMessages].reverse().find(m => m.role === 'assistant')?.content || '';
 
+      // Get session token for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated. Please log in.');
+      }
+
       let resp = await fetch(`${BACKEND_URL}/api/generate-question`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({
           image: dataURL,
           instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.',
@@ -2392,7 +2410,10 @@ const DocumentEditor: React.FC = () => {
         dataURL = makeDataUrl(900, 0.65);
         resp = await fetch(`${BACKEND_URL}/api/generate-question`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
           body: JSON.stringify({
             image: dataURL,
             instructions: 'Create ONE new related practice problem in plain English only. No LaTeX/markdown/symbols/emojis. Use ASCII (19/5, sqrt(x)). Output only the problem statement. Make it self-contained and solvable.',

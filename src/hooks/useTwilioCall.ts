@@ -151,7 +151,7 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
         // Initialize Twilio Device with logging disabled
         const newDevice = new Device(data.token, {
-          logLevel: 'off' as any, // Disable all logs
+          logLevel: 'silent' as any, // Disable all logs
         });
 
         // Set up device event listeners

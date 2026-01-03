@@ -456,18 +456,31 @@ const CourseCommunity = () => {
       fileName: newDiscussionFile?.name
     });
 
-    if (!user || !communityId || !newDiscussionTitle || !newDiscussionContent) {
-      console.error('[handleCreateDiscussion] Validation failed:', {
-        hasUser: !!user,
-        hasCommunityId: !!communityId,
-        hasTitle: !!newDiscussionTitle,
-        hasContent: !!newDiscussionContent
+    // Validate required fields and show user-friendly error messages
+    if (!user || !communityId) {
+      // System-level validation - shouldn't happen in normal flow
+      console.error('[handleCreateDiscussion] Validation failed: missing user or communityId');
+      return;
+    }
+    
+    const trimmedTitle = newDiscussionTitle?.trim() || '';
+    const trimmedContent = newDiscussionContent?.trim() || '';
+    
+    if (!trimmedTitle || !trimmedContent) {
+      const missingFields: string[] = [];
+      if (!trimmedTitle) missingFields.push('title');
+      if (!trimmedContent) missingFields.push('content');
+      
+      toast({
+        title: "Missing Required Fields",
+        description: `Please fill out the ${missingFields.join(' and ')} ${missingFields.length > 1 ? 'fields' : 'field'} before submitting your post.`,
+        variant: "destructive"
       });
       return;
     }
 
     // Moderate content before submission (including images)
-    const combinedText = `${newDiscussionTitle} ${newDiscussionContent}`;
+    const combinedText = `${trimmedTitle} ${trimmedContent}`;
     console.log('[handleCreateDiscussion] Running content moderation...');
     setIsModeratingDiscussion(true);
     try {
@@ -538,8 +551,8 @@ const CourseCommunity = () => {
     const discussionData: any = {
       community_id: communityId,
       user_id: user.id,
-      title: newDiscussionTitle,
-      content: newDiscussionContent,
+      title: trimmedTitle,
+      content: trimmedContent,
       is_anonymous: newDiscussionAnonymous
     };
 
@@ -1613,7 +1626,10 @@ const CourseCommunity = () => {
                                         }
                                       }}
                                     >
-                                      {discussion.is_anonymous ? 'Anonymous' : `${discussion.profiles?.first_name} ${discussion.profiles?.last_name}`}
+                                      {discussion.is_anonymous 
+                                        ? (user && discussion.user_id === user.id ? 'Anonymous (you)' : 'Anonymous')
+                                        : `${discussion.profiles?.first_name} ${discussion.profiles?.last_name}`
+                                      }
                                     </span>
                                     <span className="text-sm text-gray-500 dark:text-gray-400">
                                       {formatDistanceToNow(new Date(discussion.created_at), { addSuffix: true })}
@@ -1896,7 +1912,10 @@ const CourseCommunity = () => {
                                                   }
                                                 }}
                                               >
-                                                {reply.is_anonymous === true ? 'Anonymous' : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`}
+                                                {reply.is_anonymous === true 
+                                                  ? (user && reply.user_id === user.id ? 'Anonymous (you)' : 'Anonymous')
+                                                  : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`
+                                                }
                                               </span>
                                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                                 {formatDistanceToNow(new Date(reply.created_at), { addSuffix: true })}
@@ -2374,7 +2393,10 @@ const CourseCommunity = () => {
                                       }
                                     }}
                                   >
-                                    {reply.is_anonymous === true ? 'Anonymous' : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`}
+                                    {reply.is_anonymous === true 
+                                      ? (user && reply.user_id === user.id ? 'Anonymous (you)' : 'Anonymous')
+                                      : `${reply.profiles?.first_name} ${reply.profiles?.last_name}`
+                                    }
                                   </span>
                                   <span className="text-sm text-gray-500 dark:text-gray-400">
                                     {formatDistanceToNow(new Date(reply.created_at), { addSuffix: true })}

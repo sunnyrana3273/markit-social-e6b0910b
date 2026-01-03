@@ -638,14 +638,15 @@ const DocumentEditor: React.FC = () => {
           // same day: no change
           nextCount = currentCount || 1;
         } else if (diffDays === 1) {
-          // Streak continues: increment and award points equal to new streak count
+          // Streak continues: increment streak count
           nextCount = currentCount + 1;
           if (!kpAwardedToday) {
             shouldAwardKP = true;
-            kpToAward = nextCount;
+            // Cap KP award at 3 (days 1-3 get +1, +2, +3, day 4+ gets +3)
+            kpToAward = Math.min(nextCount, 3);
           }
         } else if (diffDays > 1) {
-          // Streak broken: start over
+          // Streak broken: start over from day 1
           nextCount = 1;
           if (!kpAwardedToday) {
             shouldAwardKP = true;

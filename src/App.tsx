@@ -16,6 +16,8 @@ import Friends from "./pages/Friends";
 import Rewards from "./pages/Rewards";
 import Features from "./pages/Features";
 import Pricing from "./pages/Pricing";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import Upload from "./pages/Upload";
 import DocumentEditor from "./pages/DocumentEditor";
 import NotFound from "./pages/NotFound";
@@ -43,6 +45,8 @@ const App = () => (
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/features" element={<Features />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/app" element={<ProtectedRoute><CallProvider><Dashboard /></CallProvider></ProtectedRoute>} />
           <Route path="/app/rewards" element={<ProtectedRoute><CallProvider><Rewards /></CallProvider></ProtectedRoute>} />
           <Route path="/upload" element={<ProtectedRoute><CallProvider><Upload /></CallProvider></ProtectedRoute>} />

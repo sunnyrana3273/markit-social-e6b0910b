@@ -40,6 +40,41 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
 
   // Initialize device and get user ID
   useEffect(() => {
+    // Suppress Twilio Voice SDK console logs
+    const originalConsoleLog = console.log;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleError = console.error;
+    const originalConsoleInfo = console.info;
+
+    const shouldSuppressTwilioLog = (args: any[]): boolean => {
+      const message = args.join(' ');
+      return message.includes('[TwilioVoice]') || message.includes('TwilioVoice');
+    };
+
+    console.log = (...args: any[]) => {
+      if (!shouldSuppressTwilioLog(args)) {
+        originalConsoleLog.apply(console, args);
+      }
+    };
+
+    console.warn = (...args: any[]) => {
+      if (!shouldSuppressTwilioLog(args)) {
+        originalConsoleWarn.apply(console, args);
+      }
+    };
+
+    console.error = (...args: any[]) => {
+      if (!shouldSuppressTwilioLog(args)) {
+        originalConsoleError.apply(console, args);
+      }
+    };
+
+    console.info = (...args: any[]) => {
+      if (!shouldSuppressTwilioLog(args)) {
+        originalConsoleInfo.apply(console, args);
+      }
+    };
+
     const initializeDevice = async () => {
       try {
         // Get current user
@@ -114,9 +149,9 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
           return;
         }
 
-        // Initialize Twilio Device
+        // Initialize Twilio Device with logging disabled
         const newDevice = new Device(data.token, {
-          logLevel: 0, // 0 = silent (no logs)
+          logLevel: 'off' as any, // Disable all logs
         });
 
         // Set up device event listeners
@@ -279,6 +314,12 @@ export const useTwilioCall = (): UseTwilioCallReturn => {
           callChannelRef.current.unsubscribe();
           callChannelRef.current = null;
         }
+        
+        // Restore original console methods
+        console.log = originalConsoleLog;
+        console.warn = originalConsoleWarn;
+        console.error = originalConsoleError;
+        console.info = originalConsoleInfo;
       } catch (err) {
         console.error('[Twilio] Error during cleanup:', err);
       }

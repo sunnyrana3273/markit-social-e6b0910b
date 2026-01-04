@@ -49,8 +49,9 @@ import {
   Edit,
   Check
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { User } from "@supabase/supabase-js";
 import SettingsModal from "@/components/SettingsModal";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -96,6 +97,8 @@ interface ProblemSet {
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { toast } = useToast();
   const { theme, toggleTheme, themeColor, setThemeColor, resetThemeColor } = useTheme();
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -152,6 +155,21 @@ const Dashboard = () => {
       return new Set();
     }
   });
+
+  // Check for subscription success/cancel from Stripe redirect
+  useEffect(() => {
+    const subscriptionStatus = searchParams.get('subscription');
+    if (subscriptionStatus === 'success') {
+      toast({
+        title: "🎉 Subscription Successful!",
+        description: "Welcome to your new plan! Your account has been upgraded.",
+      });
+      // Clear the query params to prevent showing toast on refresh
+      searchParams.delete('subscription');
+      searchParams.delete('session_id');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, toast]);
 
   useEffect(() => {
     document.title = "MarkIt | Dashboard";

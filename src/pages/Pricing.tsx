@@ -11,19 +11,29 @@ import {
   Crown,
   Loader2
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useForceLightMode } from "@/hooks/useForceLightMode";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 import { BACKEND_URL } from '@/lib/api';
 
+interface LocationState {
+  autoSubscribe?: 'plus' | 'pro';
+  subscribePlan?: 'plus' | 'pro';
+}
+
 const Pricing = () => {
   useForceLightMode();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [hasTriggeredAutoSubscribe, setHasTriggeredAutoSubscribe] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  
+  // Get state if returning from auth with pending subscription
+  const locationState = location.state as LocationState | null;
   
   useEffect(() => {
     document.title = "MarkIt | Pricing";
@@ -45,10 +55,23 @@ const Pricing = () => {
       subscription.unsubscribe();
     };
   }, []);
+  
+  // Auto-trigger subscription if returning from auth with pending plan
+  useEffect(() => {
+    const planToSubscribe = locationState?.autoSubscribe || locationState?.subscribePlan;
+    if (planToSubscribe && isAuthenticated && !hasTriggeredAutoSubscribe && !isLoading) {
+      setHasTriggeredAutoSubscribe(true);
+      // Clear the state to prevent re-triggering on refresh
+      window.history.replaceState({}, document.title);
+      // Trigger subscription
+      handleSubscribe(planToSubscribe);
+    }
+  }, [locationState, isAuthenticated, hasTriggeredAutoSubscribe, isLoading]);
 
   const handleSubscribe = async (plan: 'plus' | 'pro') => {
     if (!isAuthenticated) {
-      navigate('/auth');
+      // Store intended plan and redirect to auth with return URL
+      navigate('/auth', { state: { returnTo: '/pricing', subscribePlan: plan } });
       return;
     }
 
@@ -106,7 +129,6 @@ const Pricing = () => {
     { name: "Advanced Analytics", free: false, plus: false, pro: true },
     { name: "Priority Support", free: false, plus: true, pro: true },
     { name: "24/7 Support", free: false, plus: false, pro: true },
-    { name: "Export Options", free: "Basic", plus: "Advanced", pro: "All Formats" },
   ];
 
   return (

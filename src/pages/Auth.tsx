@@ -3,17 +3,26 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Book, ArrowLeft } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useForceLightMode } from "@/hooks/useForceLightMode";
+
+interface LocationState {
+  returnTo?: string;
+  subscribePlan?: 'plus' | 'pro';
+}
 
 const Auth = () => {
   useForceLightMode();
   
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  
+  // Get return state if coming from pricing page
+  const locationState = location.state as LocationState | null;
 
   useEffect(() => {
     document.title = "MarkIt | Sign In";
@@ -50,7 +59,16 @@ const Auth = () => {
         if (!profile?.username) {
           navigate('/onboarding');
         } else {
-          navigate('/app');
+          // Check for pending subscription from localStorage (persists across OAuth redirect)
+          const pendingSubscribe = localStorage.getItem('pendingSubscribePlan');
+          if (pendingSubscribe) {
+            localStorage.removeItem('pendingSubscribePlan');
+            navigate('/pricing', { state: { autoSubscribe: pendingSubscribe } });
+          } else if (locationState?.returnTo) {
+            navigate(locationState.returnTo, { state: { subscribePlan: locationState.subscribePlan } });
+          } else {
+            navigate('/app');
+          }
         }
       } catch (error) {
         console.error('[Auth] Error in checkAuth:', error);
@@ -82,7 +100,16 @@ const Auth = () => {
           if (!profile?.username) {
             navigate('/onboarding');
           } else {
-            navigate('/app');
+            // Check for pending subscription from localStorage (persists across OAuth redirect)
+            const pendingSubscribe = localStorage.getItem('pendingSubscribePlan');
+            if (pendingSubscribe) {
+              localStorage.removeItem('pendingSubscribePlan');
+              navigate('/pricing', { state: { autoSubscribe: pendingSubscribe } });
+            } else if (locationState?.returnTo) {
+              navigate(locationState.returnTo, { state: { subscribePlan: locationState.subscribePlan } });
+            } else {
+              navigate('/app');
+            }
           }
         } catch (error) {
           console.error('[Auth] Error handling sign in:', error);
@@ -100,10 +127,15 @@ const Auth = () => {
     setIsGoogleLoading(true);
     
     try {
+      // Store pending subscription plan in localStorage (persists across OAuth redirect)
+      if (locationState?.subscribePlan) {
+        localStorage.setItem('pendingSubscribePlan', locationState.subscribePlan);
+      }
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/onboarding`
+          redirectTo: `${window.location.origin}/auth`
         }
       });
 

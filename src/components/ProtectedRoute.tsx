@@ -23,18 +23,18 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       return;
     }
 
-    // Safety timeout - if we're still loading after 10 seconds, something is wrong
+    // Safety timeout - if we're still loading after 5 seconds, something is wrong
     isLoadingRef.current = true;
     const safetyTimeout = setTimeout(() => {
       if (isLoadingRef.current) {
-        console.error('[ProtectedRoute] Safety timeout - forcing loading to false after 10s');
+        console.error('[ProtectedRoute] Safety timeout - forcing loading to false after 5s');
         setIsLoading(false);
         isCheckingRef.current = false;
         hasCheckedRef.current = true;
         setNeedsUsername(false);
         isLoadingRef.current = false;
       }
-    }, 10000);
+    }, 5000);
 
     const checkAuthAndUsername = async () => {
       isCheckingRef.current = true;

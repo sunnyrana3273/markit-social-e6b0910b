@@ -143,3 +143,4 @@ COMMENT ON COLUMN public.community_discussion_replies.report_count IS 'Number of
 COMMENT ON COLUMN public.profiles.is_under_review IS 'Whether the user is currently under review and blocked from posting';
 COMMENT ON COLUMN public.profiles.review_started_at IS 'When the review period started';
 
+

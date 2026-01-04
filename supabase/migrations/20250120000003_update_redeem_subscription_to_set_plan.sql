@@ -117,3 +117,4 @@ $$;
 -- Add comment
 COMMENT ON FUNCTION public.redeem_subscription(text, integer) IS 'Redeems a subscription using knowledge points. Updates both subscription_redemptions and profiles.plan/plan_expires_at. Handles plan upgrades and extensions.';
 
+

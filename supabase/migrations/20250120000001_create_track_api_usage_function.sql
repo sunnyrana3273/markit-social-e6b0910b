@@ -48,3 +48,4 @@ GRANT EXECUTE ON FUNCTION public.track_api_usage(uuid) TO anon;
 COMMENT ON FUNCTION public.track_api_usage(uuid) IS 'Securely tracks API usage for a user. Validates user exists and increments their daily query count.';
 
 
+

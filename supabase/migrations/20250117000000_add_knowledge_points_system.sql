@@ -171,3 +171,4 @@ CREATE TRIGGER trigger_award_points_on_reply_upvote
 
 
 
+

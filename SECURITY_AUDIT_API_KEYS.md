@@ -280,3 +280,4 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 - [Supabase Security Best Practices](https://supabase.com/docs/guides/platform/security)
 - [OpenAI API Key Security](https://platform.openai.com/docs/guides/safety-best-practices)
 
+

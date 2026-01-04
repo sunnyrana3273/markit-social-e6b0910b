@@ -204,3 +204,4 @@ If this repository was ever public or shared:
 5. **Code review** - Always review for hardcoded secrets
 6. **Use pre-commit hooks** - Detect secrets before commit
 
+

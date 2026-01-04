@@ -64,3 +64,4 @@ WHERE us.favorite_community_id IS NULL
     WHERE cm.user_id = us.user_id
   );
 
+
